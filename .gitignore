@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Env files — only the committed templates are allowed
+.env
+.env.*
+!.env.example
+
+# AI tooling (Claude Code, skills, agent instructions) — kept local only
+.claude/
+.agents/
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+.mcp.json
+skills-lock.json
+
+# Logs
+*.log
+.pnpm-debug.log*

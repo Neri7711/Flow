@@ -1,0 +1,12 @@
+{
+  "name": "flow",
+  "private": true,
+  "packageManager": "pnpm@10.30.3",
+  "scripts": {
+    "dev:web": "pnpm --filter @flow/web dev",
+    "build:web": "pnpm --filter @flow/web build",
+    "lint:web": "pnpm --filter @flow/web lint",
+    "lint:fsd:web": "pnpm --filter @flow/web lint:fsd",
+    "typecheck:web": "pnpm --filter @flow/web typecheck"
+  }
+}

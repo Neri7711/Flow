@@ -1,0 +1,220 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/*
+ * Flow design tokens — "retro cálido y suave".
+ * Values extracted from the Claude Design mockups. Never pure white/black:
+ * everything is warm. Dark mode is intentionally out of scope for now.
+ */
+
+@theme {
+  /* Base palette */
+  --color-cream: #f5eedc;
+  --color-surface: #fffbf3;
+  --color-surface-sunken: #f7f0e0;
+  --color-subtle: #efe6d6;
+  --color-sand: #eee5d1;
+  --color-line: #e4d9c6;
+  --color-line-strong: #d6c9b3; /* inputs, outline buttons, neutral avatars */
+  --color-ink: #2a2420;
+  --color-ink-muted: #6b6158;
+  --color-ink-faint: #8a7f74; /* placeholders only — fails AA for body text */
+  --color-night: #231f1e;
+  --color-panel: #fbf6ec; /* side panels (task detail) */
+
+  /* Teams: accent / soft (backgrounds) / strong (text on soft) */
+  --color-cs: #9c8fd9;
+  --color-cs-soft: #e7e2f7;
+  --color-cs-strong: #4e3fa6;
+  --color-pl: #ee9a7e;
+  --color-pl-soft: #fbe2d8;
+  --color-pl-strong: #a4472c;
+  --color-me: #e8be5c;
+  --color-me-soft: #f8eacb;
+  --color-me-strong: #7a5a0e;
+  --color-ii: #7fc7a8;
+  --color-ii-soft: #ddf1e7;
+  --color-ii-strong: #2a7456;
+
+  /* Task statuses (independent from team colors) */
+  --color-status-backlog: #9a8f84;
+  --color-status-todo: #7c7168;
+  --color-status-in-progress: #c9772f;
+  --color-status-in-review: #5b4db0; /* pending decision: too close to CS lavender */
+  --color-status-done: #2f7d5e;
+
+  /* Typography */
+  --tracking-display: -0.03em;
+  --tracking-label: 0.08em;
+
+  /* Elevation — flat workspace, shadows reserved for floating layers */
+  --shadow-card: 0 1px 2px rgb(42 36 32 / 0.05);
+  --shadow-raised: 0 1px 2px rgb(42 36 32 / 0.04), 0 10px 30px rgb(42 36 32 / 0.05);
+  --shadow-float: 0 20px 50px rgb(42 36 32 / 0.16);
+  --shadow-toast: 0 18px 40px rgb(0 0 0 / 0.28);
+
+  /* Fixed layout dimensions from the design */
+  --spacing-sidebar: 272px;
+  --spacing-topbar: 56px;
+  --spacing-detail-panel: 440px;
+}
+
+/*
+ * Active team theming: any subtree with `data-team="cs|pl|me|ii"` exposes
+ * `team`, `team-soft` and `team-strong` utilities (bg-team, text-team-strong…).
+ */
+[data-team="cs"] {
+  --team: var(--color-cs);
+  --team-soft: var(--color-cs-soft);
+  --team-strong: var(--color-cs-strong);
+}
+[data-team="pl"] {
+  --team: var(--color-pl);
+  --team-soft: var(--color-pl-soft);
+  --team-strong: var(--color-pl-strong);
+}
+[data-team="me"] {
+  --team: var(--color-me);
+  --team-soft: var(--color-me-soft);
+  --team-strong: var(--color-me-strong);
+}
+[data-team="ii"] {
+  --team: var(--color-ii);
+  --team-soft: var(--color-ii-soft);
+  --team-strong: var(--color-ii-strong);
+}
+/* Warm, team-tinted text tones for content sitting on `team-soft` (space hero). */
+[data-team] {
+  --team-muted: color-mix(in oklab, var(--team-strong) 50%, var(--color-ink-muted));
+  --team-ink: color-mix(in oklab, var(--team-strong) 40%, var(--color-ink));
+}
+
+/* shadcn/ui semantic tokens, mapped onto the Flow palette */
+:root {
+  --background: var(--color-cream);
+  --foreground: var(--color-ink);
+  --card: var(--color-surface);
+  --card-foreground: var(--color-ink);
+  --popover: var(--color-surface);
+  --popover-foreground: var(--color-ink);
+  --primary: var(--color-ink);
+  --primary-foreground: var(--color-cream);
+  --secondary: var(--color-subtle);
+  --secondary-foreground: var(--color-ink);
+  --muted: var(--color-subtle);
+  --muted-foreground: var(--color-ink-muted);
+  --accent: var(--color-subtle);
+  --accent-foreground: var(--color-ink);
+  --destructive: #b4432f; /* not defined by the design yet — warm red placeholder */
+  --border: var(--color-line);
+  --input: var(--color-line-strong);
+  --ring: var(--color-ink-muted);
+  --radius: 0.625rem; /* 10px inputs → xl = 14px cards, 3xl ≈ 22px hero */
+  --sidebar: var(--color-sand);
+  --sidebar-foreground: var(--color-ink);
+  --sidebar-primary: var(--color-ink);
+  --sidebar-primary-foreground: var(--color-cream);
+  --sidebar-accent: var(--color-surface);
+  --sidebar-accent-foreground: var(--color-ink);
+  --sidebar-border: var(--color-line);
+  --sidebar-ring: var(--color-ink-muted);
+}
+
+@theme inline {
+  --color-team: var(--team);
+  --color-team-soft: var(--team-soft);
+  --color-team-strong: var(--team-strong);
+  --color-team-muted: var(--team-muted);
+  --color-team-ink: var(--team-ink);
+
+  --font-sans: var(--font-onest);
+  --font-heading: var(--font-onest);
+  --font-mono: var(--font-jetbrains-mono);
+  --font-serif: var(--font-instrument-serif);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+/* Block editor content (TipTap). Node views style themselves; this covers plain nodes. */
+@layer components {
+  .flow-editor {
+    @apply flex flex-col gap-[22px] outline-none;
+
+    & > p {
+      @apply text-[17px] leading-[1.65];
+    }
+    & h2 {
+      @apply mt-3 text-2xl font-bold tracking-[-0.02em];
+    }
+    & h3 {
+      @apply mt-2 text-xl font-semibold;
+    }
+    & ul:not([data-type]) {
+      @apply list-disc pl-6 text-[17px];
+    }
+    & ol {
+      @apply list-decimal pl-6 text-[17px];
+    }
+    & ul[data-type="taskList"] {
+      @apply flex flex-col gap-3 text-base;
+    }
+    & blockquote {
+      @apply border-l-2 border-line-strong pl-4 text-ink-muted;
+    }
+    & a {
+      @apply underline decoration-line-strong underline-offset-[3px];
+    }
+    & :not(pre) > code {
+      @apply rounded-md bg-subtle px-1.5 py-0.5 font-mono text-[0.9em];
+    }
+    & .is-empty::before {
+      @apply pointer-events-none float-left h-0 text-ink-faint content-[attr(data-placeholder)];
+    }
+  }
+}
