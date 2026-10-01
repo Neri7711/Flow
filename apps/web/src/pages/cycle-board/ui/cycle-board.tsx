@@ -3,11 +3,13 @@
 import { type ReactNode, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChartGantt, Kanban, List, ListFilter, type LucideIcon, Plus } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { useShallow } from "zustand/react/shallow";
 
 import { type TaskStatus, useTaskStore } from "@/entities/task";
 import { UserAvatar } from "@/entities/user";
 import { CreateTaskDialog } from "@/features/create-task";
+import { motionTokens } from "@/shared/config";
 import { useHotkeys } from "@/shared/lib/use-hotkeys";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
@@ -47,7 +49,11 @@ export function CycleBoard({ directory, header, selectedId }: CycleBoardProps) {
   const router = useRouter();
   const pathname = usePathname() ?? "";
 
-  const [view, setView] = useState<View>("board");
+  // Views slide in from the side of the chosen tab (render-time direction tracking).
+  const [{ view, direction }, setViewState] = useState<{ view: View; direction: 1 | -1 }>({ view: "board", direction: 1 });
+  const viewIndex = (id: View) => VIEWS.findIndex((candidate) => candidate.id === id);
+  const setView = (next: View) =>
+    setViewState((current) => ({ view: next, direction: viewIndex(next) >= viewIndex(current.view) ? 1 : -1 }));
   const [assigneeFilter, setAssigneeFilter] = useState<ReadonlySet<string>>(new Set());
   const [labelFilter, setLabelFilter] = useState<ReadonlySet<string>>(new Set());
   const [createStatus, setCreateStatus] = useState<TaskStatus | null>(null);
@@ -89,12 +95,20 @@ export function CycleBoard({ directory, header, selectedId }: CycleBoardProps) {
                 aria-selected={view === id}
                 onClick={() => setView(id)}
                 className={cn(
-                  "flex h-8 cursor-pointer items-center gap-1.5 rounded-[9px] px-3 text-[13px] font-medium transition-colors",
-                  view === id ? "bg-surface font-semibold shadow-[0_1px_2px_rgb(42_36_32/0.1)]" : "hover:bg-surface/50",
+                  "relative flex h-8 cursor-pointer items-center gap-1.5 rounded-[9px] px-3 text-[13px] font-medium transition-colors",
+                  view === id ? "font-semibold" : "hover:bg-surface/50",
                 )}
               >
-                <Icon className="size-3.5" strokeWidth={1.8} />
-                {label}
+                {/* One indicator that glides between tabs instead of each tab toggling its own. */}
+                {view === id && (
+                  <motion.span
+                    layoutId="board-view-indicator"
+                    transition={motionTokens.spring}
+                    className="absolute inset-0 rounded-[9px] bg-surface shadow-[0_1px_2px_rgb(42_36_32/0.1)]"
+                  />
+                )}
+                <Icon className="relative size-3.5" strokeWidth={1.8} />
+                <span className="relative">{label}</span>
               </button>
             ))}
           </div>
@@ -126,29 +140,54 @@ export function CycleBoard({ directory, header, selectedId }: CycleBoardProps) {
           </Button>
         </div>
 
-        {view === "board" && (
-          <KanbanView
-            tasks={visibleTasks}
-            blockerStatuses={blockerStatuses}
-            directory={directory}
-            selectedId={selectedId}
-            onSelect={select}
-            onMove={(taskId, status) => setStatus(taskId, status, currentUser.id)}
-            onCreate={setCreateStatus}
-          />
-        )}
-        {view === "list" && (
-          <ListView tasks={visibleTasks} directory={directory} selectedId={selectedId} onSelect={select} />
-        )}
-        {view === "timeline" && (
-          <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-line-strong py-16 text-center">
-            <Eyebrow>Próximamente</Eyebrow>
-            <p className="font-serif text-xl text-ink-muted italic">La vista Timeline todavía se está diseñando.</p>
-          </div>
-        )}
+        {/* initial={false}: no entrance on page load (SSR stays visible), only when switching views. */}
+        <AnimatePresence initial={false}>
+          <motion.div
+            key={view}
+            initial={{ opacity: 0, x: direction * 16 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: motionTokens.duration.fast, ease: motionTokens.ease.out }}
+            className="flex flex-col"
+          >
+            {view === "board" && (
+              <KanbanView
+                tasks={visibleTasks}
+                blockerStatuses={blockerStatuses}
+                directory={directory}
+                selectedId={selectedId}
+                onSelect={select}
+                onMove={(taskId, status) => setStatus(taskId, status, currentUser.id)}
+                onCreate={setCreateStatus}
+              />
+            )}
+            {view === "list" && (
+              <ListView tasks={visibleTasks} directory={directory} selectedId={selectedId} onSelect={select} />
+            )}
+            {view === "timeline" && (
+              <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-line-strong py-16 text-center">
+                <Eyebrow>Próximamente</Eyebrow>
+                <p className="font-serif text-xl text-ink-muted italic">La vista Timeline todavía se está diseñando.</p>
+              </div>
+            )}
+          </motion.div>
+        </AnimatePresence>
       </div>
 
-      {selectedTask && <TaskDetailPanel task={selectedTask} directory={directory} onClose={() => select(null)} />}
+      {/* The panel grows in from the right so the board reflows instead of jumping. */}
+      <AnimatePresence initial={false}>
+        {selectedTask && (
+          <motion.div
+            key="task-detail"
+            initial={{ width: 0 }}
+            animate={{ width: "auto" }}
+            exit={{ width: 0 }}
+            transition={{ duration: motionTokens.duration.base, ease: motionTokens.ease.drawer }}
+            className="flex shrink-0 overflow-hidden"
+          >
+            <TaskDetailPanel key={selectedTask.id} task={selectedTask} directory={directory} onClose={() => select(null)} />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <CreateTaskDialog
         open={createStatus !== null}

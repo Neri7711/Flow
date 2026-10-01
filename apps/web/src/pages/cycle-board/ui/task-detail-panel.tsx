@@ -3,6 +3,7 @@
 import { type FormEvent, type ReactNode, useState } from "react";
 import Link from "next/link";
 import { ChartNoAxesColumnIncreasing, Ellipsis, File, Link as LinkIcon, X } from "lucide-react";
+import { motion } from "motion/react";
 import { useShallow } from "zustand/react/shallow";
 
 import {
@@ -17,7 +18,7 @@ import {
 } from "@/entities/task";
 import { TeamAvatar } from "@/entities/team";
 import { UserAvatar } from "@/entities/user";
-import { routes } from "@/shared/config";
+import { motionTokens, routes } from "@/shared/config";
 import { formatDayMonth, formatRelative } from "@/shared/lib/format-date";
 import { toast } from "@/shared/lib/toast";
 import { Button } from "@/shared/ui/button";
@@ -63,8 +64,12 @@ export function TaskDetailPanel({ task, directory, onClose }: TaskDetailPanelPro
   };
 
   return (
-    <aside
+    <motion.aside
       aria-label={`Detalle de ${task.id}`}
+      // Keyed by task: switching tasks cross-fades the content while the panel stays open.
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: motionTokens.duration.fast, ease: motionTokens.ease.out }}
       className="flex w-detail-panel shrink-0 flex-col gap-5 overflow-y-auto border-l border-line bg-panel px-6 pt-5 pb-7"
     >
       <div className="flex items-center gap-2">
@@ -198,7 +203,7 @@ export function TaskDetailPanel({ task, directory, onClose }: TaskDetailPanelPro
         })}
         <CommentForm taskId={task.id} actorId={currentUser.id} />
       </section>
-    </aside>
+    </motion.aside>
   );
 }
 
@@ -222,12 +227,12 @@ function RelationRow({ kind, task, directory }: { kind: string; task: Task; dire
       scroll={false}
       className="flex items-center gap-2.5 rounded-xl border border-line bg-surface px-3 py-2.5 transition-colors hover:border-line-strong"
     >
-      <span className="w-[84px] shrink-0 font-mono text-[10px] tracking-[0.06em] text-ink-muted uppercase">{kind}</span>
+      <span className="w-[92px] shrink-0 font-mono text-[10px] tracking-[0.06em] whitespace-nowrap text-ink-muted uppercase">{kind}</span>
       {team && <TeamAvatar team={team} size={22} decorative />}
-      <span data-team={task.teamId} className="font-mono text-[11px] font-medium text-team-strong">
+      <span data-team={task.teamId} className="shrink-0 font-mono text-[11px] font-medium whitespace-nowrap text-team-strong">
         {task.id}
       </span>
-      <span className="truncate text-[13px]">{task.title}</span>
+      <span className="min-w-0 truncate text-[13px]">{task.title}</span>
       <span className="ml-auto flex shrink-0 items-center gap-[5px] text-xs text-ink-muted">
         <TaskStatusIcon status={task.status} size={13} />
         {TASK_STATUS_LABEL[task.status]}

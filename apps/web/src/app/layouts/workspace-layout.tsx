@@ -16,7 +16,7 @@ type WorkspaceLayoutProps = {
   children: ReactNode;
 };
 
-/** Sidebar + content column for every page inside a space. Themes the subtree with the team color. */
+/** Sidebar + content column for every page inside a space (team theme comes from `SpaceTheme`). */
 export async function WorkspaceLayout({ teamId, children }: WorkspaceLayoutProps) {
   const team = await getTeam(teamId);
   if (!team) notFound();
@@ -32,7 +32,7 @@ export async function WorkspaceLayout({ teamId, children }: WorkspaceLayoutProps
   const documents = allDocuments.filter((doc) => doc.teamId === team.id);
 
   return (
-    <div data-team={team.id} className="flex min-h-dvh">
+    <div className="flex min-h-dvh">
       <AppSidebar
         team={team}
         teams={teams}

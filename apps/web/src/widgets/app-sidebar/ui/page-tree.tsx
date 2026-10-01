@@ -74,8 +74,19 @@ export function PageTree({ teamId, teamName, documents }: PageTreeProps) {
             {node.title}
           </Link>
         </div>
-        {hasChildren && isExpanded && (
-          <ul className="flex flex-col gap-px">{node.children.map((child) => renderNode(child, depth + 1))}</ul>
+        {hasChildren && (
+          // 0fr → 1fr animates the height without measuring; `inert` hides collapsed links from focus/AT.
+          <div
+            inert={!isExpanded}
+            className={cn(
+              "grid transition-[grid-template-rows] duration-(--motion-base) ease-out",
+              isExpanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+            )}
+          >
+            <ul className="flex min-h-0 flex-col gap-px overflow-hidden">
+              {node.children.map((child) => renderNode(child, depth + 1))}
+            </ul>
+          </div>
         )}
       </li>
     );

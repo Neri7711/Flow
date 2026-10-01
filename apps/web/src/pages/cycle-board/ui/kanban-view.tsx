@@ -17,6 +17,7 @@ import { Plus } from "lucide-react";
 
 import { TASK_STATUS_LABEL, TASK_STATUSES, type Task, type TaskStatus, TaskStatusIcon } from "@/entities/task";
 import { cn } from "@/shared/lib/utils";
+import { AnimatedNumber } from "@/shared/ui/animated-number";
 
 import type { BoardDirectory } from "../model/directory";
 import { TaskCard } from "./task-card";
@@ -73,7 +74,8 @@ export function KanbanView({ tasks, blockerStatuses, directory, selectedId, onSe
         },
       }}
     >
-      <div className="flex gap-3.5 overflow-x-auto px-0.5 pt-0.5 pb-2">
+      {/* shrink-0: an overflow container would otherwise shrink to the leftover height and clip cards. */}
+      <div className="flex shrink-0 gap-3.5 overflow-x-auto px-0.5 pt-0.5 pb-2">
         {TASK_STATUSES.map((status) => (
           <Column key={status} status={status} count={tasks.filter((task) => task.status === status).length} onCreate={onCreate}>
             {tasks
@@ -114,7 +116,7 @@ function Column({ status, count, onCreate, children }: ColumnProps) {
       <div className="flex h-8 items-center gap-2 px-1">
         <TaskStatusIcon status={status} />
         <h3 className="text-sm font-semibold">{TASK_STATUS_LABEL[status]}</h3>
-        <span className="font-mono text-[11px] text-ink-muted">{count}</span>
+        <AnimatedNumber value={count} className="font-mono text-[11px] text-ink-muted" />
         <button
           type="button"
           onClick={() => onCreate(status)}

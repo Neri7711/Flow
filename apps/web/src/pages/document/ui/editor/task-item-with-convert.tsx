@@ -8,6 +8,7 @@ import { useTaskStore } from "@/entities/task";
 import type { Team } from "@/entities/team";
 import { toast } from "@/shared/lib/toast";
 import { cn } from "@/shared/lib/utils";
+import { Checkbox } from "@/shared/ui/checkbox";
 
 type ConvertOptions = {
   team: Team | null;
@@ -60,15 +61,16 @@ function TaskItemView({ node, updateAttributes, getPos, editor, extension }: Nod
 
   return (
     <NodeViewWrapper as="li" data-checked={checked} className="group/item flex items-start gap-3">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={handleCheck}
-        contentEditable={false}
-        aria-label={title ? `Completar “${title}”` : "Completar"}
-        className="mt-[5px] size-[18px] shrink-0 cursor-pointer accent-ink"
+      <span contentEditable={false} className="mt-[3px] shrink-0">
+        <Checkbox checked={checked} onChange={handleCheck} aria-label={title ? `Completar “${title}”` : "Completar"} />
+      </span>
+      <NodeViewContent
+        className={cn(
+          // Always struck, but transparent until checked: the line fades in and out.
+          "min-w-0 flex-1 line-through decoration-transparent transition-[color,text-decoration-color] duration-(--motion-base) [&_p]:!m-0 [&_p]:!text-base",
+          checked && "text-ink-muted decoration-current",
+        )}
       />
-      <NodeViewContent className={cn("min-w-0 flex-1 [&_p]:!m-0 [&_p]:!text-base", checked && "text-ink-muted line-through")} />
       {!linkedId && title && team && (
         <button
           type="button"

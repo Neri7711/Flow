@@ -94,9 +94,10 @@ export function CommandPalette({ team, teams, users, documents, cycleId }: Comma
       </button>
 
       <Dialog open={open} onOpenChange={openPalette}>
+        {/* Opened from the keyboard many times a day: near-instant on purpose (duration-75). */}
         <DialogContent
           showCloseButton={false}
-          className="top-[120px] w-[640px] max-w-[calc(100%-2rem)] translate-y-0 gap-0 overflow-hidden rounded-[22px] p-0 shadow-[0_30px_80px_rgb(35_31_30/0.35)] sm:max-w-[640px]"
+          className="top-[120px] w-[640px] duration-75 max-w-[calc(100%-2rem)] translate-y-0 gap-0 overflow-hidden rounded-[22px] p-0 shadow-[0_30px_80px_rgb(35_31_30/0.35)] sm:max-w-[640px]"
         >
           <DialogTitle className="sr-only">Paleta de comandos</DialogTitle>
           <DialogDescription className="sr-only">Busca tareas y documentos o ejecuta una acción.</DialogDescription>

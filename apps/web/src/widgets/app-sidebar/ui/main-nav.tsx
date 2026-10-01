@@ -7,6 +7,7 @@ import { Calendar, House, Inbox, type LucideIcon, SquareCheck, Users } from "luc
 import { useTaskStore } from "@/entities/task";
 import { routes } from "@/shared/config";
 import { cn } from "@/shared/lib/utils";
+import { AnimatedNumber } from "@/shared/ui/animated-number";
 
 type NavItem = {
   label: string;
@@ -54,7 +55,7 @@ export function MainNav({ teamId, inboxCount }: MainNavProps) {
           >
             <Icon className="size-4" strokeWidth={1.8} />
             <span>{label}</span>
-            {count ? <span className="ml-auto font-mono text-[11px] text-ink-muted">{count}</span> : null}
+            {count ? <AnimatedNumber value={count} className="ml-auto font-mono text-[11px] text-ink-muted" /> : null}
           </Link>
         );
       })}

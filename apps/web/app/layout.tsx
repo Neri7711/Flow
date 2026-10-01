@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { Providers } from "@/app/entrypoint/providers";
 import { fontVariables } from "@/app/styles/fonts";
 import "@/app/styles/globals.css";
 
@@ -14,7 +15,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="es" className={`${fontVariables} h-full`}>
-      <body className="flex min-h-full flex-col">{children}</body>
+      <body className="flex min-h-full flex-col">
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

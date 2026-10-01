@@ -6,6 +6,7 @@ import type { Cycle } from "@/entities/cycle";
 import type { Project } from "@/entities/project";
 import { useTaskStore } from "@/entities/task";
 import { daysUntil, formatDayMonth } from "@/shared/lib/format-date";
+import { AnimatedNumber } from "@/shared/ui/animated-number";
 import { MonoTag } from "@/shared/ui/mono-tag";
 
 import { MilestoneTrack } from "./milestone-track";
@@ -48,10 +49,10 @@ export function CycleHeader({ cycle, project }: CycleHeaderProps) {
             aria-valuemax={100}
             className="h-2 grow overflow-hidden rounded-full bg-subtle"
           >
-            <div className="h-full rounded-full bg-team transition-[width]" style={{ width: `${progress}%` }} />
+            <div className="h-full rounded-full bg-team transition-[width] duration-(--motion-base)" style={{ width: `${progress}%` }} />
           </div>
           <span className="font-mono text-[11px] text-ink-muted uppercase">
-            {done} / {statuses.length} tareas
+            <AnimatedNumber value={done} /> / <AnimatedNumber value={statuses.length} /> tareas
           </span>
         </div>
       </div>

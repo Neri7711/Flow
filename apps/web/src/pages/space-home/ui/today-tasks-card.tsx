@@ -4,9 +4,11 @@ import { useShallow } from "zustand/react/shallow";
 
 import { type TaskLabel, TaskLabelChip, useTaskStore } from "@/entities/task";
 import { type User, UserAvatar } from "@/entities/user";
-import { cn } from "@/shared/lib/utils";
+import { AnimatedNumber } from "@/shared/ui/animated-number";
 import { Card, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Checkbox } from "@/shared/ui/checkbox";
 import { Eyebrow } from "@/shared/ui/eyebrow";
+import { StrikeText } from "@/shared/ui/strike-text";
 
 type TodayTasksCardProps = {
   teamId: string;
@@ -31,7 +33,7 @@ export function TodayTasksCard({ teamId, date, labels, users }: TodayTasksCardPr
         <CardTitle>Tareas de hoy</CardTitle>
         {tasks.length > 0 && (
           <Eyebrow>
-            {pending} de {tasks.length}
+            <AnimatedNumber value={pending} /> de {tasks.length}
           </Eyebrow>
         )}
       </CardHeader>
@@ -45,13 +47,10 @@ export function TodayTasksCard({ teamId, date, labels, users }: TodayTasksCardPr
 
         return (
           <label key={task.id} className="flex cursor-pointer items-center gap-3 border-t border-subtle py-3">
-            <input
-              type="checkbox"
-              checked={isDone}
-              onChange={() => toggleDone(task.id)}
-              className="size-[18px] shrink-0 cursor-pointer accent-ink"
-            />
-            <span className={cn("grow text-sm", isDone && "text-ink-muted line-through")}>{task.title}</span>
+            <Checkbox checked={isDone} onChange={() => toggleDone(task.id)} />
+            <span className="grow text-sm">
+              <StrikeText struck={isDone}>{task.title}</StrikeText>
+            </span>
             {label && <TaskLabelChip label={label} />}
             {assignee && <UserAvatar user={assignee} size={24} ring />}
           </label>

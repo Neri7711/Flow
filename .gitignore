@@ -20,6 +20,7 @@ CLAUDE.local.md
 AGENTS.md
 .mcp.json
 skills-lock.json
+.impeccable.md
 
 # Logs
 *.log

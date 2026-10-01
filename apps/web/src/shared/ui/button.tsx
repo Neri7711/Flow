@@ -5,11 +5,11 @@ import { Slot } from "radix-ui";
 import { cn } from "@/shared/lib/utils";
 
 /**
- * Flow buttons are pills. Sizes match the mockups:
+ * Flow buttons are pills that sink slightly when pressed (instant feedback). Sizes match the mockups:
  * sm 36px (top bar, board toolbar) · md 42px (hero actions) · lg 50px (login).
  */
 const buttonVariants = cva(
-  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-full font-medium whitespace-nowrap transition-colors outline-none select-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-full font-medium whitespace-nowrap transition-[color,background-color,border-color,scale] outline-none select-none active:not-disabled:scale-[0.97] focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {

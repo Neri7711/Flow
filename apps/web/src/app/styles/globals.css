@@ -54,6 +54,19 @@
   --shadow-float: 0 20px 50px rgb(42 36 32 / 0.16);
   --shadow-toast: 0 18px 40px rgb(0 0 0 / 0.28);
 
+  /*
+   * Motion easings (Emil Kowalski's curves). Overrides Tailwind's `ease-out` /
+   * `ease-in-out` so every transition shares the same feel; `ease-drawer` for panels.
+   * Mirrored in `src/shared/config/motion.ts` for the `motion` library.
+   */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* Every `transition-*` utility defaults to the press/hover timing. */
+  --default-transition-duration: 140ms;
+  --default-transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+
   /* Fixed layout dimensions from the design */
   --spacing-sidebar: 272px;
   --spacing-topbar: 56px;
@@ -88,6 +101,56 @@
 [data-team] {
   --team-muted: color-mix(in oklab, var(--team-strong) 50%, var(--color-ink-muted));
   --team-ink: color-mix(in oklab, var(--team-strong) 40%, var(--color-ink));
+}
+
+/*
+ * Typed team colors so they can be interpolated: switching spaces cross-fades the
+ * accent instead of snapping. Only the persistent space root (`.space-theme`) transitions;
+ * nested `data-team` elements (chips, avatars) keep their fixed color.
+ */
+@property --team {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --team-soft {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --team-strong {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+.space-theme {
+  transition:
+    --team var(--motion-slow) var(--ease-in-out),
+    --team-soft var(--motion-slow) var(--ease-in-out),
+    --team-strong var(--motion-slow) var(--ease-in-out);
+}
+
+/*
+ * Motion durations, by how often the user sees the animation (keep UI motion < 300ms).
+ * Use as `duration-(--motion-press)`. Mirrored in `src/shared/config/motion.ts`.
+ */
+:root {
+  --motion-press: 140ms; /* press feedback, hover */
+  --motion-fast: 180ms; /* menus, popovers, tooltips, checkmarks */
+  --motion-base: 240ms; /* panels, tabs, expand/collapse */
+  --motion-slow: 320ms; /* rare moments (empty states, onboarding) */
+}
+
+/* Reduced motion: transitions collapse to near-instant; `motion` follows via MotionConfig. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* shadcn/ui semantic tokens, mapped onto the Flow palette */
