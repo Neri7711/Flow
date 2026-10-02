@@ -24,6 +24,7 @@ function TaskMentionView({ node }: NodeViewProps) {
       <Link
         href={`${routes.tasks(task.teamId)}?task=${task.id}`}
         data-team={task.teamId}
+        data-task-mention-id={task.id}
         title={`${task.title} · ${TASK_STATUS_LABEL[task.status]}`}
         contentEditable={false}
         className="mx-0.5 inline-flex items-center gap-1.5 rounded-full border border-line bg-surface py-0.5 pr-2.5 pl-1.5 align-[-2px] text-[13px] leading-5 no-underline transition-colors hover:border-line-strong"

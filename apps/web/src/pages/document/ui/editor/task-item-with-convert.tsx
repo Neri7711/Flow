@@ -6,6 +6,7 @@ import { SquareArrowOutUpRight } from "lucide-react";
 
 import { useTaskStore } from "@/entities/task";
 import type { Team } from "@/entities/team";
+import { measureText, morphTextInto } from "@/shared/lib/morph";
 import { toast } from "@/shared/lib/toast";
 import { cn } from "@/shared/lib/utils";
 import { Checkbox } from "@/shared/ui/checkbox";
@@ -43,6 +44,10 @@ function TaskItemView({ node, updateAttributes, getPos, editor, extension }: Nod
     const position = getPos();
     if (!team || !title || typeof position !== "number") return;
 
+    // Measure the item's text before the DOM changes, to morph it into the new pill.
+    const paragraph = (editor.view.nodeDOM(position) as HTMLElement | null)?.querySelector("p");
+    const source = paragraph ? measureText(paragraph) : null;
+
     const id = createTask({
       teamId: team.id,
       abbreviation: team.abbreviation,
@@ -50,8 +55,21 @@ function TaskItemView({ node, updateAttributes, getPos, editor, extension }: Nod
       status: checked ? "done" : "todo",
       sourceDocumentId: documentId ?? undefined,
     });
-    // Inside <li> → <p>: +2 lands at the start of the item's text.
-    editor.chain().insertContentAt(position + 2, [{ type: "taskMention", attrs: { id } }, { type: "text", text: " " }]).run();
+    // The item's text becomes the task: replace the paragraph's content (<li> → <p>, hence +2)
+    // with the live pill, which already shows the title.
+    const textStart = position + 2;
+    const textEnd = textStart + node.child(0).content.size;
+    editor.chain().insertContentAt({ from: textStart, to: textEnd }, { type: "taskMention", attrs: { id } }).run();
+
+    // The pill is a React node view, rendered a frame or two after the transaction.
+    if (source) {
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          const pill = editor.view.dom.querySelector<HTMLElement>(`[data-task-mention-id="${id}"]`);
+          if (pill) morphTextInto(source, pill);
+        }),
+      );
+    }
     toast(
       <>
         Se creó <b>{id}</b> desde este documento.

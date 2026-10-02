@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import {
   type Announcements,
   DndContext,
@@ -14,8 +14,11 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { Plus } from "lucide-react";
+import { motion } from "motion/react";
 
 import { TASK_STATUS_LABEL, TASK_STATUSES, type Task, type TaskStatus, TaskStatusIcon } from "@/entities/task";
+import { motionTokens } from "@/shared/config";
+import { captureRects, playFlip, type RectMap } from "@/shared/lib/flip";
 import { cn } from "@/shared/lib/utils";
 import { AnimatedNumber } from "@/shared/ui/animated-number";
 
@@ -33,6 +36,12 @@ type KanbanViewProps = {
 };
 
 const isStatus = (value: unknown): value is TaskStatus => TASK_STATUSES.includes(value as TaskStatus);
+
+/** The "lifted" pose of a dragged card; the landing animation starts from it. */
+const LIFT = { scale: 1.03, rotate: 1.5 };
+const LIFT_TRANSFORM = `scale(${LIFT.scale}) rotate(${LIFT.rotate}deg)`;
+
+type PendingFlip = { before: RectMap; overrides: RectMap; startTransform: Map<string, string> };
 
 /** Spanish screen-reader feedback for keyboard/pointer dragging. */
 const announcements: Announcements = {
@@ -53,10 +62,34 @@ export function KanbanView({ tasks, blockerStatuses, directory, selectedId, onSe
     useSensor(KeyboardSensor, { keyboardCodes: { start: ["Space"], cancel: ["Escape"], end: ["Space"] } }),
   );
 
+  const boardRef = useRef<HTMLDivElement>(null);
+  const pendingFlip = useRef<PendingFlip | null>(null);
+
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    const id = String(active.id);
+    const dropped = active.rect.current.translated;
+
+    // FLIP "first": where every card is now, and where the dragged one was released.
+    if (boardRef.current) {
+      pendingFlip.current = {
+        before: captureRects(boardRef.current),
+        overrides: new Map(dropped ? [[id, new DOMRect(dropped.left, dropped.top, dropped.width, dropped.height)]] : []),
+        startTransform: new Map([[id, LIFT_TRANSFORM]]),
+      };
+    }
+
     setDraggingId(null);
-    if (over && isStatus(over.id)) onMove(String(active.id), over.id);
+    if (over && isStatus(over.id)) onMove(id, over.id);
   };
+
+  // FLIP "last + play": after React moved the cards, glide them from their old spots.
+  // The dropped card lands from the release point; the rest of the columns reflow.
+  useLayoutEffect(() => {
+    const pending = pendingFlip.current;
+    if (!pending || !boardRef.current) return;
+    pendingFlip.current = null;
+    playFlip(boardRef.current, pending.before, pending);
+  });
 
   const dragging = tasks.find((task) => task.id === draggingId);
 
@@ -75,7 +108,7 @@ export function KanbanView({ tasks, blockerStatuses, directory, selectedId, onSe
       }}
     >
       {/* shrink-0: an overflow container would otherwise shrink to the leftover height and clip cards. */}
-      <div className="flex shrink-0 gap-3.5 overflow-x-auto px-0.5 pt-0.5 pb-2">
+      <div ref={boardRef} className="flex shrink-0 gap-3.5 overflow-x-auto px-0.5 pt-0.5 pb-2">
         {TASK_STATUSES.map((status) => (
           <Column key={status} status={status} count={tasks.filter((task) => task.status === status).length} onCreate={onCreate}>
             {tasks
@@ -95,7 +128,11 @@ export function KanbanView({ tasks, blockerStatuses, directory, selectedId, onSe
       </div>
 
       <DragOverlay dropAnimation={null}>
-        {dragging && <TaskCard task={dragging} blockerStatuses={blockerStatuses} directory={directory} dragging />}
+        {dragging && (
+          <motion.div initial={{ scale: 1, rotate: 0 }} animate={LIFT} transition={motionTokens.spring}>
+            <TaskCard task={dragging} blockerStatuses={blockerStatuses} directory={directory} dragging />
+          </motion.div>
+        )}
       </DragOverlay>
     </DndContext>
   );
@@ -158,6 +195,7 @@ function DraggableCard({ task, onSelect, ...props }: DraggableCardProps) {
       {...attributes}
       {...listeners}
       aria-roledescription="tarea arrastrable"
+      data-flip-id={task.id}
       onClick={() => onSelect(task.id)}
       onKeyDown={(event) => {
         listeners?.onKeyDown?.(event);

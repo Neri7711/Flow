@@ -72,7 +72,7 @@ export function TaskCard({
         "flex cursor-pointer flex-col gap-2.5 rounded-[14px] border border-line bg-surface px-3.5 py-3 text-left shadow-card outline-none transition-[box-shadow,opacity,border-color,scale] hover:border-line-strong active:scale-[0.985] focus-visible:ring-3 focus-visible:ring-ring/50",
         task.status === "done" && !dragging && "opacity-60",
         selected && "border-ink ring-2 ring-ink",
-        dragging && "rotate-2 shadow-float",
+        dragging && "shadow-float",
         className,
       )}
       {...props}
