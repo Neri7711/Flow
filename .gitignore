@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Build output (apps/api)
+dist/
+
 # OS / editors
 .DS_Store
 .idea/

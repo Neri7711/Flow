@@ -1,4 +1,6 @@
-import { Controller, DefaultValuePipe, Get, ParseIntPipe, Query } from "@nestjs/common";
+import { Controller, Get, Query } from "@nestjs/common";
+
+import { TeamLimitQueryDto } from "@/shared/query.dto";
 
 import { ActivityService } from "./activity.service";
 
@@ -8,10 +10,7 @@ export class ActivityController {
 
   /** GET /api/activity/recent?teamId=pl&limit=3 */
   @Get("recent")
-  findRecent(
-    @Query("teamId") teamId: string,
-    @Query("limit", new DefaultValuePipe(3), ParseIntPipe) limit: number,
-  ) {
+  findRecent(@Query() { teamId, limit }: TeamLimitQueryDto) {
     return this.activity.findRecent(teamId, limit);
   }
 }

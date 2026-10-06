@@ -34,13 +34,13 @@ export class TaskController {
   }
 
   @Patch("tasks/:id/status")
-  setStatus(@Param("id") id: string, @Body() body: SetStatusDto) {
-    return this.tasks.setStatus(id, body);
+  setStatus(@Param("id") id: string, @Body() { status, actorId }: SetStatusDto) {
+    return this.tasks.setStatus(id, status, actorId);
   }
 
   @Patch("tasks/:id/toggle-done")
-  toggleDone(@Param("id") id: string, @Body() body: ToggleDoneDto) {
-    return this.tasks.toggleDone(id, body.actorId);
+  toggleDone(@Param("id") id: string, @Body() { actorId }: ToggleDoneDto) {
+    return this.tasks.toggleDone(id, actorId);
   }
 
   @Post("tasks/:id/comments")

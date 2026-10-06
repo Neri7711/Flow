@@ -1,15 +1,6 @@
-import {
-  Body,
-  Controller,
-  DefaultValuePipe,
-  Delete,
-  Get,
-  Param,
-  ParseIntPipe,
-  Patch,
-  Post,
-  Query,
-} from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
+
+import { OptionalTeamQueryDto, TeamLimitQueryDto, TeamQueryDto } from "@/shared/query.dto";
 
 import { AddDocumentCommentDto, CreateDocumentDto, UpdateDocumentDto } from "./dto";
 import { DocumentService } from "./document.service";
@@ -18,25 +9,21 @@ import { DocumentService } from "./document.service";
 export class DocumentController {
   constructor(private readonly documents: DocumentService) {}
 
-  /** GET /api/documents          -> all documents
-   *  GET /api/documents?teamId=pl -> that team's documents */
+  /** GET /api/documents[?teamId=pl] -> documents in sidebar order. */
   @Get()
-  findAll(@Query("teamId") teamId?: string) {
-    return teamId ? this.documents.findForTeam(teamId) : this.documents.findAll();
+  findAll(@Query() { teamId }: OptionalTeamQueryDto) {
+    return this.documents.findAll(teamId);
   }
 
   /** GET /api/documents/tree?teamId=pl -> nested sidebar tree. */
   @Get("tree")
-  findTree(@Query("teamId") teamId: string) {
+  findTree(@Query() { teamId }: TeamQueryDto) {
     return this.documents.findTree(teamId);
   }
 
   /** GET /api/documents/recent?teamId=pl&limit=4 */
   @Get("recent")
-  findRecent(
-    @Query("teamId") teamId: string,
-    @Query("limit", new DefaultValuePipe(4), ParseIntPipe) limit: number,
-  ) {
+  findRecent(@Query() { teamId, limit }: TeamLimitQueryDto) {
     return this.documents.findRecent(teamId, limit);
   }
 

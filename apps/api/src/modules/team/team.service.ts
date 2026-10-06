@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
+import type { Team } from "@prisma/client";
 
 import type { TeamDto } from "@/contracts";
 import { PrismaService } from "@/prisma/prisma.service";
@@ -8,7 +9,7 @@ export class TeamService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(): Promise<TeamDto[]> {
-    const teams = await this.prisma.team.findMany({ orderBy: { id: "asc" } });
+    const teams = await this.prisma.team.findMany({ orderBy: { position: "asc" } });
     return teams.map(toDto);
   }
 
@@ -19,6 +20,6 @@ export class TeamService {
   }
 }
 
-function toDto(team: { id: string; name: string; abbreviation: string; mascotAlt: string }): TeamDto {
+function toDto(team: Team): TeamDto {
   return { id: team.id, name: team.name, abbreviation: team.abbreviation, mascotAlt: team.mascotAlt };
 }

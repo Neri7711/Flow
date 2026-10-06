@@ -1,14 +1,15 @@
 import { Type } from "class-transformer";
-import { IsArray, IsOptional, IsString, MinLength, ValidateNested } from "class-validator";
+import { IsArray, IsNotEmpty, IsOptional, IsString, ValidateNested } from "class-validator";
 
+/** Each property: omit to leave it unchanged, send `null` (or `[]` for tags) to clear it. */
 export class DocumentPropertiesInput {
   @IsOptional()
   @IsString()
-  status?: string;
+  status?: string | null;
 
   @IsOptional()
   @IsString()
-  ownerId?: string;
+  ownerId?: string | null;
 
   @IsOptional()
   @IsArray()
@@ -18,10 +19,11 @@ export class DocumentPropertiesInput {
 
 export class CreateDocumentDto {
   @IsString()
+  @IsNotEmpty()
   teamId!: string;
 
   @IsString()
-  @MinLength(1)
+  @IsNotEmpty()
   title!: string;
 
   @IsOptional()
@@ -29,6 +31,7 @@ export class CreateDocumentDto {
   parentId?: string | null;
 
   @IsString()
+  @IsNotEmpty()
   updatedById!: string;
 
   @IsOptional()
@@ -44,13 +47,14 @@ export class CreateDocumentDto {
 export class UpdateDocumentDto {
   @IsOptional()
   @IsString()
-  @MinLength(1)
+  @IsNotEmpty()
   title?: string;
 
   @IsOptional()
   @IsString()
   content?: string;
 
+  /** Send `null` to move the page to the top level of its space. */
   @IsOptional()
   @IsString()
   parentId?: string | null;
@@ -60,7 +64,7 @@ export class UpdateDocumentDto {
   @Type(() => DocumentPropertiesInput)
   properties?: DocumentPropertiesInput;
 
-  /** Who performed the edit; stamped into updatedAt/updatedById. */
+  /** Who performed the edit. */
   @IsOptional()
   @IsString()
   updatedById?: string;
@@ -68,9 +72,10 @@ export class UpdateDocumentDto {
 
 export class AddDocumentCommentDto {
   @IsString()
+  @IsNotEmpty()
   authorId!: string;
 
   @IsString()
-  @MinLength(1)
+  @IsNotEmpty()
   body!: string;
 }

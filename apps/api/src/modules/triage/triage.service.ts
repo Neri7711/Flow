@@ -25,6 +25,6 @@ function toDto(request: TriageRequest): TriageRequestDto {
     toTeamId: request.toTeamId,
     title: request.title,
     requesterId: request.requesterId,
-    createdAt: request.createdAt,
+    createdAt: request.createdAt.toISOString(),
   };
 }
