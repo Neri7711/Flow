@@ -1,0 +1,23 @@
+# Local PostgreSQL for the Flow API.
+# Usage: docker compose up -d   (from apps/api)
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: flow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: flow
+      POSTGRES_PASSWORD: flow
+      POSTGRES_DB: flow
+    ports:
+      - "5432:5432"
+    volumes:
+      - flow-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flow -d flow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  flow-pgdata:
