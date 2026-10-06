@@ -1,0 +1,14 @@
+# Build output
+dist/
+node_modules/
+
+# Prisma generated client
+prisma/generated/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log

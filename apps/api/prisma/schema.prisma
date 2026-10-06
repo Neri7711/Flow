@@ -1,0 +1,319 @@
+// Flow backend data model.
+//
+// Shapes mirror the TypeScript types the web frontend already expects
+// (apps/web/src/entities/*/model/types.ts). Fields the frontend treats as
+// opaque, pre-formatted date strings (startsAt, dueDate, at, ...) are stored
+// as String so responses stay byte-identical to the current fixtures and the
+// frontend keeps working untouched.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TaskStatus {
+  backlog
+  todo
+  in_progress
+  in_review
+  done
+}
+
+enum TaskPriority {
+  low
+  medium
+  high
+}
+
+enum UserRole {
+  leader
+  member
+}
+
+enum TaskEventKind {
+  status
+  comment
+}
+
+/// Team ids double as URL slugs and theme keys ("cs" | "pl" | "me" | "ii").
+model Team {
+  id           String @id
+  name         String
+  abbreviation String
+  mascotAlt    String
+
+  users            User[]
+  tasks            Task[]
+  cycles           Cycle[]
+  projects         Project[]
+  documents        Document[]
+  events           CalendarEvent[]
+  activities       Activity[]
+  triageOutgoing   TriageRequest[] @relation("TriageFrom")
+  triageIncoming   TriageRequest[] @relation("TriageTo")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id         String   @id
+  name       String
+  shortName  String
+  initials   String
+  role       UserRole
+  teamId     String
+  /// Soft team tint for the avatar; null renders the neutral tone.
+  avatarTone String?
+
+  team Team @relation(fields: [teamId], references: [id])
+
+  assignedTasks     Task[]            @relation("TaskAssignee")
+  taskEvents        TaskEvent[]
+  documentComments  DocumentComment[]
+  authoredDocuments Document[]        @relation("DocumentUpdatedBy")
+  activities        Activity[]
+  triageRequests    TriageRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teamId])
+}
+
+model TaskLabel {
+  id   String  @id
+  name String
+  /// Team palette the chip borrows; null renders the neutral tone.
+  tone String?
+
+  tasks Task[]
+}
+
+/// Team-scoped identifier: `${abbreviation}-${number}` (PL-42).
+model Task {
+  id          String       @id
+  teamId      String
+  title       String
+  description String?
+  status      TaskStatus
+  priority    TaskPriority?
+  assigneeId  String?
+  labelId     String?
+  dueDate     String?
+  cycleId     String?
+  projectId   String?
+  milestoneId String?
+  /// Document the task was created from (checkbox -> task bridge).
+  sourceDocumentId String?
+
+  team           Team       @relation(fields: [teamId], references: [id])
+  assignee       User?      @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  label          TaskLabel? @relation(fields: [labelId], references: [id])
+  cycle          Cycle?     @relation(fields: [cycleId], references: [id])
+  project        Project?   @relation(fields: [projectId], references: [id])
+  sourceDocument Document?  @relation("TaskSourceDocument", fields: [sourceDocumentId], references: [id])
+
+  events TaskEvent[]
+
+  /// Tasks that block this one (this task is the blocked side).
+  blockedBy TaskDependency[] @relation("Blocked")
+  /// Tasks this one blocks (this task is the blocker side).
+  blocks    TaskDependency[] @relation("Blocker")
+
+  /// Documents whose content mentions this task's identifier (backlinks).
+  mentions DocumentTaskMention[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teamId])
+  @@index([cycleId])
+  @@index([status])
+}
+
+/// Join table: `taskId` is blocked by `blockerId`.
+model TaskDependency {
+  taskId    String
+  blockerId String
+
+  task    Task @relation("Blocked", fields: [taskId], references: [id], onDelete: Cascade)
+  blocker Task @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, blockerId])
+  @@index([blockerId])
+}
+
+model TaskEvent {
+  id      String        @id @default(cuid())
+  taskId  String
+  kind    TaskEventKind
+  actorId String
+  /// Set when kind = status.
+  status  TaskStatus?
+  /// Set when kind = comment.
+  body    String?
+  at      String
+
+  task  Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actor User @relation(fields: [actorId], references: [id])
+
+  @@index([taskId])
+}
+
+/// Two-week iteration; unfinished work rolls over to the next cycle.
+model Cycle {
+  id       String @id
+  teamId   String
+  number   Int
+  startsAt String
+  endsAt   String
+
+  team  Team   @relation(fields: [teamId], references: [id])
+  tasks Task[]
+
+  @@index([teamId])
+}
+
+model Project {
+  id     String @id
+  teamId String
+  name   String
+
+  team       Team          @relation(fields: [teamId], references: [id])
+  milestones Milestone[]
+  areas      ProjectArea[]
+  tasks      Task[]
+
+  @@index([teamId])
+}
+
+model Milestone {
+  id        String @id
+  projectId String
+  name      String
+  date      String
+  /// Preserves authored order within the project.
+  position  Int    @default(0)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+/// Progress per work area of the project, 0-100.
+model ProjectArea {
+  id        String @id @default(cuid())
+  projectId String
+  name      String
+  progress  Int
+  tone      String
+  position  Int    @default(0)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model Document {
+  id          String   @id
+  teamId      String
+  title       String
+  /// null for top-level pages of the space.
+  parentId    String?
+  updatedAt   String
+  updatedById String
+  /// TipTap HTML content of the page.
+  content     String   @default("<p></p>")
+
+  // Notion-style page properties (all optional).
+  propStatus  String?
+  propOwnerId String?
+  propTags    String[] @default([])
+
+  team      Team       @relation(fields: [teamId], references: [id])
+  updatedBy User       @relation("DocumentUpdatedBy", fields: [updatedById], references: [id])
+  parent    Document?  @relation("DocumentTree", fields: [parentId], references: [id])
+  children  Document[] @relation("DocumentTree")
+
+  comments     DocumentComment[]
+  sourcedTasks Task[]                @relation("TaskSourceDocument")
+  taskMentions DocumentTaskMention[]
+
+  @@index([teamId])
+  @@index([parentId])
+}
+
+/// Join table: a document mentions a task (task backlinks).
+model DocumentTaskMention {
+  documentId String
+  taskId     String
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  task     Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@id([documentId, taskId])
+  @@index([taskId])
+}
+
+model DocumentComment {
+  id         String @id @default(cuid())
+  documentId String
+  authorId   String
+  body       String
+  at         String
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  author   User     @relation(fields: [authorId], references: [id])
+
+  @@index([documentId])
+}
+
+model CalendarEvent {
+  id       String  @id
+  teamId   String
+  title    String
+  startsAt String
+  /// null for all-day events.
+  endsAt   String?
+  /// Dot color in event lists.
+  tone     String
+
+  team Team @relation(fields: [teamId], references: [id])
+
+  @@index([teamId])
+}
+
+model Activity {
+  id      String @id
+  teamId  String
+  actorId String
+  /// What the actor did, rendered after their name.
+  summary String
+  at      String
+
+  team  Team @relation(fields: [teamId], references: [id])
+  actor User @relation(fields: [actorId], references: [id])
+
+  @@index([teamId])
+}
+
+/// A request from another team (or a new member) waiting for a leader's decision.
+model TriageRequest {
+  id          String  @id
+  fromTeamId  String
+  toTeamId    String
+  title       String
+  requesterId String?
+  createdAt   String
+
+  fromTeam  Team  @relation("TriageFrom", fields: [fromTeamId], references: [id])
+  toTeam    Team  @relation("TriageTo", fields: [toTeamId], references: [id])
+  requester User? @relation(fields: [requesterId], references: [id])
+
+  @@index([toTeamId])
+}
