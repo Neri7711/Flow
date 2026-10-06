@@ -1,5 +1,7 @@
 import { Controller, Get, Param, Query } from "@nestjs/common";
 
+import { TeamQueryDto } from "@/shared/query.dto";
+
 import { CycleService } from "./cycle.service";
 
 @Controller("cycles")
@@ -8,8 +10,8 @@ export class CycleController {
 
   /** GET /api/cycles/active?teamId=pl -> the team's current cycle (or null). */
   @Get("active")
-  async findActive(@Query("teamId") teamId: string) {
-    return (await this.cycles.findActive(teamId)) ?? null;
+  findActive(@Query() { teamId }: TeamQueryDto) {
+    return this.cycles.findActive(teamId);
   }
 
   @Get(":id")

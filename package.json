@@ -10,7 +10,6 @@
     "typecheck:web": "pnpm --filter @flow/web typecheck",
     "dev:api": "pnpm --filter @flow/api dev",
     "build:api": "pnpm --filter @flow/api build",
-    "lint:api": "pnpm --filter @flow/api lint",
     "typecheck:api": "pnpm --filter @flow/api typecheck",
     "prisma:generate": "pnpm --filter @flow/api prisma:generate",
     "prisma:migrate": "pnpm --filter @flow/api prisma:migrate",

@@ -1,5 +1,7 @@
 import { Controller, Get, Param, Query } from "@nestjs/common";
 
+import { TeamQueryDto } from "@/shared/query.dto";
+
 import { ProjectService } from "./project.service";
 
 @Controller("projects")
@@ -8,8 +10,8 @@ export class ProjectController {
 
   /** GET /api/projects/active?teamId=pl -> the team's active project (or null). */
   @Get("active")
-  async findActive(@Query("teamId") teamId: string) {
-    return (await this.projects.findActive(teamId)) ?? null;
+  findActive(@Query() { teamId }: TeamQueryDto) {
+    return this.projects.findActive(teamId);
   }
 
   @Get(":id")

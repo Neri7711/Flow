@@ -16,8 +16,8 @@ CREATE TABLE "Team" (
     "name" TEXT NOT NULL,
     "abbreviation" TEXT NOT NULL,
     "mascotAlt" TEXT NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "position" SERIAL NOT NULL,
+    "taskSeq" INTEGER NOT NULL DEFAULT 0,
 
     CONSTRAINT "Team_pkey" PRIMARY KEY ("id")
 );
@@ -31,8 +31,7 @@ CREATE TABLE "User" (
     "role" "UserRole" NOT NULL,
     "teamId" TEXT NOT NULL,
     "avatarTone" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "position" SERIAL NOT NULL,
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
 );
@@ -42,6 +41,7 @@ CREATE TABLE "TaskLabel" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "tone" TEXT,
+    "position" SERIAL NOT NULL,
 
     CONSTRAINT "TaskLabel_pkey" PRIMARY KEY ("id")
 );
@@ -61,8 +61,7 @@ CREATE TABLE "Task" (
     "projectId" TEXT,
     "milestoneId" TEXT,
     "sourceDocumentId" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "position" SERIAL NOT NULL,
 
     CONSTRAINT "Task_pkey" PRIMARY KEY ("id")
 );
@@ -83,7 +82,7 @@ CREATE TABLE "TaskEvent" (
     "actorId" TEXT NOT NULL,
     "status" "TaskStatus",
     "body" TEXT,
-    "at" TEXT NOT NULL,
+    "at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "TaskEvent_pkey" PRIMARY KEY ("id")
 );
@@ -93,8 +92,8 @@ CREATE TABLE "Cycle" (
     "id" TEXT NOT NULL,
     "teamId" TEXT NOT NULL,
     "number" INTEGER NOT NULL,
-    "startsAt" TEXT NOT NULL,
-    "endsAt" TEXT NOT NULL,
+    "startsAt" TIMESTAMP(3) NOT NULL,
+    "endsAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Cycle_pkey" PRIMARY KEY ("id")
 );
@@ -113,8 +112,8 @@ CREATE TABLE "Milestone" (
     "id" TEXT NOT NULL,
     "projectId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
-    "date" TEXT NOT NULL,
-    "position" INTEGER NOT NULL DEFAULT 0,
+    "date" TIMESTAMP(3) NOT NULL,
+    "position" SERIAL NOT NULL,
 
     CONSTRAINT "Milestone_pkey" PRIMARY KEY ("id")
 );
@@ -126,7 +125,7 @@ CREATE TABLE "ProjectArea" (
     "name" TEXT NOT NULL,
     "progress" INTEGER NOT NULL,
     "tone" TEXT NOT NULL,
-    "position" INTEGER NOT NULL DEFAULT 0,
+    "position" SERIAL NOT NULL,
 
     CONSTRAINT "ProjectArea_pkey" PRIMARY KEY ("id")
 );
@@ -137,9 +136,10 @@ CREATE TABLE "Document" (
     "teamId" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "parentId" TEXT,
-    "updatedAt" TEXT NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
     "updatedById" TEXT NOT NULL,
     "content" TEXT NOT NULL DEFAULT '<p></p>',
+    "position" SERIAL NOT NULL,
     "propStatus" TEXT,
     "propOwnerId" TEXT,
     "propTags" TEXT[] DEFAULT ARRAY[]::TEXT[],
@@ -161,7 +161,7 @@ CREATE TABLE "DocumentComment" (
     "documentId" TEXT NOT NULL,
     "authorId" TEXT NOT NULL,
     "body" TEXT NOT NULL,
-    "at" TEXT NOT NULL,
+    "at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "DocumentComment_pkey" PRIMARY KEY ("id")
 );
@@ -171,8 +171,8 @@ CREATE TABLE "CalendarEvent" (
     "id" TEXT NOT NULL,
     "teamId" TEXT NOT NULL,
     "title" TEXT NOT NULL,
-    "startsAt" TEXT NOT NULL,
-    "endsAt" TEXT,
+    "startsAt" TIMESTAMP(3) NOT NULL,
+    "endsAt" TIMESTAMP(3),
     "tone" TEXT NOT NULL,
 
     CONSTRAINT "CalendarEvent_pkey" PRIMARY KEY ("id")
@@ -184,7 +184,7 @@ CREATE TABLE "Activity" (
     "teamId" TEXT NOT NULL,
     "actorId" TEXT NOT NULL,
     "summary" TEXT NOT NULL,
-    "at" TEXT NOT NULL,
+    "at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Activity_pkey" PRIMARY KEY ("id")
 );
@@ -196,7 +196,7 @@ CREATE TABLE "TriageRequest" (
     "toTeamId" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "requesterId" TEXT,
-    "createdAt" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "TriageRequest_pkey" PRIMARY KEY ("id")
 );
@@ -205,22 +205,19 @@ CREATE TABLE "TriageRequest" (
 CREATE INDEX "User_teamId_idx" ON "User"("teamId");
 
 -- CreateIndex
-CREATE INDEX "Task_teamId_idx" ON "Task"("teamId");
+CREATE INDEX "Task_teamId_position_idx" ON "Task"("teamId", "position");
 
 -- CreateIndex
 CREATE INDEX "Task_cycleId_idx" ON "Task"("cycleId");
 
 -- CreateIndex
-CREATE INDEX "Task_status_idx" ON "Task"("status");
-
--- CreateIndex
 CREATE INDEX "TaskDependency_blockerId_idx" ON "TaskDependency"("blockerId");
 
 -- CreateIndex
-CREATE INDEX "TaskEvent_taskId_idx" ON "TaskEvent"("taskId");
+CREATE INDEX "TaskEvent_taskId_at_idx" ON "TaskEvent"("taskId", "at");
 
 -- CreateIndex
-CREATE INDEX "Cycle_teamId_idx" ON "Cycle"("teamId");
+CREATE INDEX "Cycle_teamId_number_idx" ON "Cycle"("teamId", "number");
 
 -- CreateIndex
 CREATE INDEX "Project_teamId_idx" ON "Project"("teamId");
@@ -232,7 +229,10 @@ CREATE INDEX "Milestone_projectId_idx" ON "Milestone"("projectId");
 CREATE INDEX "ProjectArea_projectId_idx" ON "ProjectArea"("projectId");
 
 -- CreateIndex
-CREATE INDEX "Document_teamId_idx" ON "Document"("teamId");
+CREATE INDEX "Document_teamId_position_idx" ON "Document"("teamId", "position");
+
+-- CreateIndex
+CREATE INDEX "Document_teamId_updatedAt_idx" ON "Document"("teamId", "updatedAt");
 
 -- CreateIndex
 CREATE INDEX "Document_parentId_idx" ON "Document"("parentId");
@@ -241,16 +241,16 @@ CREATE INDEX "Document_parentId_idx" ON "Document"("parentId");
 CREATE INDEX "DocumentTaskMention_taskId_idx" ON "DocumentTaskMention"("taskId");
 
 -- CreateIndex
-CREATE INDEX "DocumentComment_documentId_idx" ON "DocumentComment"("documentId");
+CREATE INDEX "DocumentComment_documentId_at_idx" ON "DocumentComment"("documentId", "at");
 
 -- CreateIndex
-CREATE INDEX "CalendarEvent_teamId_idx" ON "CalendarEvent"("teamId");
+CREATE INDEX "CalendarEvent_teamId_startsAt_idx" ON "CalendarEvent"("teamId", "startsAt");
 
 -- CreateIndex
-CREATE INDEX "Activity_teamId_idx" ON "Activity"("teamId");
+CREATE INDEX "Activity_teamId_at_idx" ON "Activity"("teamId", "at");
 
 -- CreateIndex
-CREATE INDEX "TriageRequest_toTeamId_idx" ON "TriageRequest"("toTeamId");
+CREATE INDEX "TriageRequest_toTeamId_createdAt_idx" ON "TriageRequest"("toTeamId", "createdAt");
 
 -- AddForeignKey
 ALTER TABLE "User" ADD CONSTRAINT "User_teamId_fkey" FOREIGN KEY ("teamId") REFERENCES "Team"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -304,7 +304,7 @@ ALTER TABLE "Document" ADD CONSTRAINT "Document_teamId_fkey" FOREIGN KEY ("teamI
 ALTER TABLE "Document" ADD CONSTRAINT "Document_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Document" ADD CONSTRAINT "Document_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "Document"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Document" ADD CONSTRAINT "Document_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "Document"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "DocumentTaskMention" ADD CONSTRAINT "DocumentTaskMention_documentId_fkey" FOREIGN KEY ("documentId") REFERENCES "Document"("id") ON DELETE CASCADE ON UPDATE CASCADE;

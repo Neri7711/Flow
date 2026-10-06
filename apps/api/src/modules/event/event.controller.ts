@@ -1,4 +1,6 @@
-import { Controller, DefaultValuePipe, Get, ParseIntPipe, Query } from "@nestjs/common";
+import { Controller, Get, Query } from "@nestjs/common";
+
+import { TeamLimitQueryDto } from "@/shared/query.dto";
 
 import { EventService } from "./event.service";
 
@@ -8,10 +10,7 @@ export class EventController {
 
   /** GET /api/events/upcoming?teamId=pl&limit=3 */
   @Get("upcoming")
-  findUpcoming(
-    @Query("teamId") teamId: string,
-    @Query("limit", new DefaultValuePipe(3), ParseIntPipe) limit: number,
-  ) {
+  findUpcoming(@Query() { teamId, limit }: TeamLimitQueryDto) {
     return this.events.findUpcoming(teamId, limit);
   }
 }

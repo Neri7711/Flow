@@ -20,5 +20,5 @@ export class ActivityService {
 }
 
 function toDto(item: Activity): ActivityDto {
-  return { id: item.id, teamId: item.teamId, actorId: item.actorId, summary: item.summary, at: item.at };
+  return { id: item.id, teamId: item.teamId, actorId: item.actorId, summary: item.summary, at: item.at.toISOString() };
 }

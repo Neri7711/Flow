@@ -1,22 +1,28 @@
-import { IsIn, IsOptional, IsString, MinLength } from "class-validator";
+import { IsIn, IsNotEmpty, IsOptional, IsString } from "class-validator";
 
-const STATUSES = ["backlog", "todo", "in_progress", "in_review", "done"] as const;
-type Status = (typeof STATUSES)[number];
+import type { TaskStatus } from "@/contracts";
+
+const STATUSES = ["backlog", "todo", "in_progress", "in_review", "done"] as const satisfies readonly TaskStatus[];
 
 export class CreateTaskDto {
   @IsString()
+  @IsNotEmpty()
   teamId!: string;
 
-  /** Team abbreviation used to build the identifier (PL -> PL-57). */
+  /**
+   * Accepted for compatibility with the frontend's `NewTask` shape, but ignored:
+   * the identifier prefix always comes from the team itself.
+   */
+  @IsOptional()
   @IsString()
-  abbreviation!: string;
+  abbreviation?: string;
 
   @IsString()
-  @MinLength(1)
+  @IsNotEmpty()
   title!: string;
 
   @IsIn(STATUSES)
-  status!: Status;
+  status!: TaskStatus;
 
   @IsOptional()
   @IsString()
@@ -33,7 +39,7 @@ export class CreateTaskDto {
 
 export class SetStatusDto {
   @IsIn(STATUSES)
-  status!: Status;
+  status!: TaskStatus;
 
   /** Pass to record the change in the task's activity. */
   @IsOptional()
@@ -49,10 +55,11 @@ export class ToggleDoneDto {
 
 export class AddCommentDto {
   @IsString()
+  @IsNotEmpty()
   actorId!: string;
 
   @IsString()
-  @MinLength(1)
+  @IsNotEmpty()
   body!: string;
 }
 
@@ -67,5 +74,5 @@ export class TaskQueryDto {
 
   @IsOptional()
   @IsIn(STATUSES)
-  status?: Status;
+  status?: TaskStatus;
 }

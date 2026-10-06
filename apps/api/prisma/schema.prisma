@@ -1,10 +1,13 @@
 // Flow backend data model.
 //
-// Shapes mirror the TypeScript types the web frontend already expects
-// (apps/web/src/entities/*/model/types.ts). Fields the frontend treats as
-// opaque, pre-formatted date strings (startsAt, dueDate, at, ...) are stored
-// as String so responses stay byte-identical to the current fixtures and the
-// frontend keeps working untouched.
+// Shapes mirror the TypeScript types the web frontend expects
+// (apps/web/src/entities/*/model/types.ts). Instants are stored as DateTime and
+// serialized as ISO strings (the frontend parses every one with `new Date()`).
+// `Task.dueDate` stays a "YYYY-MM-DD" string because the frontend compares it
+// with `===` against a calendar-day key.
+//
+// `position` columns preserve insertion order: the frontend renders lists
+// (teams, board columns, sidebar tree) in the order the API returns them.
 
 generator client {
   provider = "prisma-client-js"
@@ -45,19 +48,19 @@ model Team {
   name         String
   abbreviation String
   mascotAlt    String
+  position     Int    @default(autoincrement())
+  /// Last number handed out for task identifiers (PL-56 -> next is PL-57).
+  taskSeq      Int    @default(0)
 
-  users            User[]
-  tasks            Task[]
-  cycles           Cycle[]
-  projects         Project[]
-  documents        Document[]
-  events           CalendarEvent[]
-  activities       Activity[]
-  triageOutgoing   TriageRequest[] @relation("TriageFrom")
-  triageIncoming   TriageRequest[] @relation("TriageTo")
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  users          User[]
+  tasks          Task[]
+  cycles         Cycle[]
+  projects       Project[]
+  documents      Document[]
+  events         CalendarEvent[]
+  activities     Activity[]
+  triageOutgoing TriageRequest[] @relation("TriageFrom")
+  triageIncoming TriageRequest[] @relation("TriageTo")
 }
 
 model User {
@@ -69,6 +72,7 @@ model User {
   teamId     String
   /// Soft team tint for the avatar; null renders the neutral tone.
   avatarTone String?
+  position   Int      @default(autoincrement())
 
   team Team @relation(fields: [teamId], references: [id])
 
@@ -79,44 +83,44 @@ model User {
   activities        Activity[]
   triageRequests    TriageRequest[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
   @@index([teamId])
 }
 
 model TaskLabel {
-  id   String  @id
-  name String
+  id       String  @id
+  name     String
   /// Team palette the chip borrows; null renders the neutral tone.
-  tone String?
+  tone     String?
+  position Int     @default(autoincrement())
 
   tasks Task[]
 }
 
 /// Team-scoped identifier: `${abbreviation}-${number}` (PL-42).
 model Task {
-  id          String       @id
-  teamId      String
-  title       String
-  description String?
-  status      TaskStatus
-  priority    TaskPriority?
-  assigneeId  String?
-  labelId     String?
-  dueDate     String?
-  cycleId     String?
-  projectId   String?
-  milestoneId String?
+  id               String        @id
+  teamId           String
+  title            String
+  description      String?
+  status           TaskStatus
+  priority         TaskPriority?
+  assigneeId       String?
+  labelId          String?
+  /// Calendar day "YYYY-MM-DD".
+  dueDate          String?
+  cycleId          String?
+  projectId        String?
+  milestoneId      String?
   /// Document the task was created from (checkbox -> task bridge).
   sourceDocumentId String?
+  position         Int           @default(autoincrement())
 
   team           Team       @relation(fields: [teamId], references: [id])
   assignee       User?      @relation("TaskAssignee", fields: [assigneeId], references: [id])
   label          TaskLabel? @relation(fields: [labelId], references: [id])
   cycle          Cycle?     @relation(fields: [cycleId], references: [id])
   project        Project?   @relation(fields: [projectId], references: [id])
-  sourceDocument Document?  @relation("TaskSourceDocument", fields: [sourceDocumentId], references: [id])
+  sourceDocument Document?  @relation("TaskSourceDocument", fields: [sourceDocumentId], references: [id], onDelete: SetNull)
 
   events TaskEvent[]
 
@@ -128,12 +132,8 @@ model Task {
   /// Documents whose content mentions this task's identifier (backlinks).
   mentions DocumentTaskMention[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([teamId])
+  @@index([teamId, position])
   @@index([cycleId])
-  @@index([status])
 }
 
 /// Join table: `taskId` is blocked by `blockerId`.
@@ -157,26 +157,26 @@ model TaskEvent {
   status  TaskStatus?
   /// Set when kind = comment.
   body    String?
-  at      String
+  at      DateTime
 
   task  Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
   actor User @relation(fields: [actorId], references: [id])
 
-  @@index([taskId])
+  @@index([taskId, at])
 }
 
 /// Two-week iteration; unfinished work rolls over to the next cycle.
 model Cycle {
-  id       String @id
+  id       String   @id
   teamId   String
   number   Int
-  startsAt String
-  endsAt   String
+  startsAt DateTime
+  endsAt   DateTime
 
   team  Team   @relation(fields: [teamId], references: [id])
   tasks Task[]
 
-  @@index([teamId])
+  @@index([teamId, number])
 }
 
 model Project {
@@ -193,12 +193,11 @@ model Project {
 }
 
 model Milestone {
-  id        String @id
+  id        String   @id
   projectId String
   name      String
-  date      String
-  /// Preserves authored order within the project.
-  position  Int    @default(0)
+  date      DateTime
+  position  Int      @default(autoincrement())
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -212,7 +211,7 @@ model ProjectArea {
   name      String
   progress  Int
   tone      String
-  position  Int    @default(0)
+  position  Int    @default(autoincrement())
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -225,10 +224,11 @@ model Document {
   title       String
   /// null for top-level pages of the space.
   parentId    String?
-  updatedAt   String
+  updatedAt   DateTime
   updatedById String
   /// TipTap HTML content of the page.
   content     String   @default("<p></p>")
+  position    Int      @default(autoincrement())
 
   // Notion-style page properties (all optional).
   propStatus  String?
@@ -237,14 +237,16 @@ model Document {
 
   team      Team       @relation(fields: [teamId], references: [id])
   updatedBy User       @relation("DocumentUpdatedBy", fields: [updatedById], references: [id])
-  parent    Document?  @relation("DocumentTree", fields: [parentId], references: [id])
+  /// Deleting a page deletes its whole subtree.
+  parent    Document?  @relation("DocumentTree", fields: [parentId], references: [id], onDelete: Cascade)
   children  Document[] @relation("DocumentTree")
 
   comments     DocumentComment[]
   sourcedTasks Task[]                @relation("TaskSourceDocument")
   taskMentions DocumentTaskMention[]
 
-  @@index([teamId])
+  @@index([teamId, position])
+  @@index([teamId, updatedAt])
   @@index([parentId])
 }
 
@@ -261,59 +263,59 @@ model DocumentTaskMention {
 }
 
 model DocumentComment {
-  id         String @id @default(cuid())
+  id         String   @id @default(cuid())
   documentId String
   authorId   String
   body       String
-  at         String
+  at         DateTime
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   author   User     @relation(fields: [authorId], references: [id])
 
-  @@index([documentId])
+  @@index([documentId, at])
 }
 
 model CalendarEvent {
-  id       String  @id
+  id       String    @id
   teamId   String
   title    String
-  startsAt String
+  startsAt DateTime
   /// null for all-day events.
-  endsAt   String?
+  endsAt   DateTime?
   /// Dot color in event lists.
   tone     String
 
   team Team @relation(fields: [teamId], references: [id])
 
-  @@index([teamId])
+  @@index([teamId, startsAt])
 }
 
 model Activity {
-  id      String @id
+  id      String   @id
   teamId  String
   actorId String
   /// What the actor did, rendered after their name.
   summary String
-  at      String
+  at      DateTime
 
   team  Team @relation(fields: [teamId], references: [id])
   actor User @relation(fields: [actorId], references: [id])
 
-  @@index([teamId])
+  @@index([teamId, at])
 }
 
 /// A request from another team (or a new member) waiting for a leader's decision.
 model TriageRequest {
-  id          String  @id
+  id          String   @id
   fromTeamId  String
   toTeamId    String
   title       String
   requesterId String?
-  createdAt   String
+  createdAt   DateTime
 
   fromTeam  Team  @relation("TriageFrom", fields: [fromTeamId], references: [id])
   toTeam    Team  @relation("TriageTo", fields: [toTeamId], references: [id])
   requester User? @relation(fields: [requesterId], references: [id])
 
-  @@index([toTeamId])
+  @@index([toTeamId, createdAt])
 }

@@ -11,13 +11,12 @@ export class EventService {
 
   /** Upcoming events for a team, soonest first. */
   async findUpcoming(teamId: string, limit = 3): Promise<CalendarEventDto[]> {
-    const reference = now().getTime();
-    const events = await this.prisma.calendarEvent.findMany({ where: { teamId } });
-    return events
-      .filter((event) => new Date(event.startsAt).getTime() >= reference)
-      .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
-      .slice(0, limit)
-      .map(toDto);
+    const events = await this.prisma.calendarEvent.findMany({
+      where: { teamId, startsAt: { gte: now() } },
+      orderBy: { startsAt: "asc" },
+      take: limit,
+    });
+    return events.map(toDto);
   }
 }
 
@@ -26,8 +25,8 @@ function toDto(event: CalendarEvent): CalendarEventDto {
     id: event.id,
     teamId: event.teamId,
     title: event.title,
-    startsAt: event.startsAt,
-    endsAt: event.endsAt,
+    startsAt: event.startsAt.toISOString(),
+    endsAt: event.endsAt?.toISOString() ?? null,
     tone: event.tone,
   };
 }
