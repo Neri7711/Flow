@@ -6,9 +6,13 @@ import { PrismaService } from "@/prisma/prisma.service";
 
 import { type AuthenticatedRequest, IS_PUBLIC } from "./session";
 
+/** `lastActiveAt` is refreshed at most this often (it drives "última actividad" and presence). */
+const ACTIVITY_RESOLUTION_MS = 60 * 1000;
+
 /**
  * Global guard: every route needs a valid `Authorization: Bearer <token>` unless marked
- * `@Public()`. The user is re-read on each request so role changes and removals apply at once.
+ * `@Public()`. The user and their memberships are re-read on each request, so role
+ * changes and removals apply at once.
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -35,11 +39,24 @@ export class AuthGuard implements CanActivate {
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, teamId: true, role: true, passwordHash: true },
+      select: {
+        id: true,
+        teamId: true,
+        role: true,
+        passwordHash: true,
+        lastActiveAt: true,
+        memberships: { select: { teamId: true, role: true } },
+      },
     });
     if (!user?.passwordHash) throw new UnauthorizedException("La cuenta ya no está activa");
 
-    request.user = { id: user.id, teamId: user.teamId, role: user.role };
+    const now = new Date();
+    if (!user.lastActiveAt || now.getTime() - user.lastActiveAt.getTime() > ACTIVITY_RESOLUTION_MS) {
+      // Best effort: presence must never fail a request.
+      this.prisma.user.update({ where: { id: user.id }, data: { lastActiveAt: now } }).catch(() => undefined);
+    }
+
+    request.user = { id: user.id, teamId: user.teamId, role: user.role, memberships: user.memberships };
     return true;
   }
 }

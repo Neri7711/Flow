@@ -28,3 +28,6 @@ skills-lock.json
 # Logs
 *.log
 .pnpm-debug.log*
+
+# Uploaded files (apps/api, development storage)
+uploads/

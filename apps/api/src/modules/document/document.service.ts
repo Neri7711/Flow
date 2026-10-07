@@ -8,8 +8,9 @@ import { PrismaService } from "@/prisma/prisma.service";
 import { now } from "@/shared/clock";
 
 import { recordActivity } from "../activity/activity.recorder";
+import { mentionedUserIds, nameOf, notify } from "../notification/notification.recorder";
 import type { AddDocumentCommentDto, CreateDocumentDto, UpdateDocumentDto } from "./dto";
-import { extractTaskMentions } from "./task-mentions";
+import { extractTaskMentions, extractUserMentions } from "./task-mentions";
 
 export type DocumentTreeNode = DocumentDto & { children: DocumentTreeNode[] };
 
@@ -77,6 +78,7 @@ export class DocumentService {
 
   async create(input: CreateDocumentDto, authorId: string): Promise<DocumentDto> {
     if (input.parentId) await this.assertValidParent(input.parentId, input.teamId);
+    if (input.coverTone) await this.assertTone(input.coverTone);
 
     return this.prisma.$transaction(async (tx) => {
       const doc = await tx.document.create({
@@ -91,18 +93,28 @@ export class DocumentService {
           propStatus: input.properties?.status ?? null,
           propOwnerId: input.properties?.ownerId ?? null,
           propTags: input.properties?.tags ?? [],
+          icon: input.icon || null,
+          coverTone: input.coverTone || null,
+          isDraft: input.isDraft ?? false,
         },
         omit: omitContent,
       });
-      if (input.content !== undefined) await syncTaskMentions(tx, doc.id, input.content);
+      if (input.content !== undefined) {
+        await syncTaskMentions(tx, doc.id, input.content);
+        await notifyNewMentions(tx, { documentId: doc.id, title: doc.title, actorId: authorId, before: "", after: input.content });
+      }
       await recordActivity(tx, { teamId: doc.teamId, actorId: authorId, summary: `creó la página ${doc.title}` });
       return toDto(doc);
     });
   }
 
   async update(id: string, input: UpdateDocumentDto, editorId: string): Promise<DocumentDto> {
-    const current = await this.prisma.document.findUnique({ where: { id }, select: { teamId: true } });
+    const current = await this.prisma.document.findUnique({
+      where: { id },
+      select: { teamId: true, content: input.content !== undefined },
+    });
     if (!current) throw notFound(id);
+    if (input.coverTone) await this.assertTone(input.coverTone);
 
     if (input.parentId) {
       await this.assertValidParent(input.parentId, current.teamId);
@@ -124,10 +136,17 @@ export class DocumentService {
           propStatus: input.properties?.status,
           propOwnerId: input.properties?.ownerId,
           propTags: input.properties?.tags,
+          icon: input.icon === undefined ? undefined : input.icon || null,
+          coverTone: input.coverTone === undefined ? undefined : input.coverTone || null,
+          isDraft: input.isDraft,
         },
         omit: omitContent,
       });
-      if (input.content !== undefined) await syncTaskMentions(tx, id, input.content);
+      if (input.content !== undefined) {
+        await syncTaskMentions(tx, id, input.content);
+        // Autosave rewrites the page constantly: only mentions that weren't there before notify.
+        await notifyNewMentions(tx, { documentId: id, title: doc.title, actorId: editorId, before: current.content ?? "", after: input.content });
+      }
       return toDto(doc);
     });
   }
@@ -142,9 +161,12 @@ export class DocumentService {
     });
   }
 
-  /** A new thread, or a reply when `parentId` points at a thread of this same page. */
+  /**
+   * A new thread, or a reply when `parentId` points at a thread of this same page.
+   * `@Name` mentions notify those people; a new thread notifies the page owner, a reply the thread's participants.
+   */
   async addComment(id: string, { body, parentId }: AddDocumentCommentDto, authorId: string): Promise<DocumentCommentDto> {
-    const doc = await this.prisma.document.findUnique({ where: { id }, select: { teamId: true, title: true } });
+    const doc = await this.prisma.document.findUnique({ where: { id }, select: { teamId: true, title: true, propOwnerId: true } });
     if (!doc) throw notFound(id);
 
     if (parentId) {
@@ -156,15 +178,32 @@ export class DocumentService {
       if (parent.parentId) throw new BadRequestException("Reply to the thread, not to another reply");
     }
 
-    const [comment] = await this.prisma.$transaction([
-      this.prisma.documentComment.create({ data: { documentId: id, parentId: parentId ?? null, authorId, body, at: now() } }),
-      recordActivity(this.prisma, {
-        teamId: doc.teamId,
+    return this.prisma.$transaction(async (tx) => {
+      const comment = await tx.documentComment.create({ data: { documentId: id, parentId: parentId ?? null, authorId, body, at: now() } });
+      await recordActivity(tx, { teamId: doc.teamId, actorId: authorId, summary: `${parentId ? "respondió" : "comentó"} en ${doc.title}` });
+
+      const actor = await nameOf(tx, authorId);
+      const mentioned = await mentionedUserIds(tx, body);
+      await notify(tx, { recipients: mentioned, actorId: authorId, kind: "mention", title: `${actor} te mencionó en ${doc.title}`, excerpt: body, documentId: id });
+
+      const participants = parentId
+        ? (await tx.documentComment.findMany({ where: { OR: [{ id: parentId }, { parentId }] }, select: { authorId: true } })).map((c) => c.authorId)
+        : [doc.propOwnerId];
+      await notify(tx, {
+        recipients: participants.filter((userId) => userId && !mentioned.includes(userId)),
         actorId: authorId,
-        summary: `${parentId ? "respondió" : "comentó"} en ${doc.title}`,
-      }),
-    ]);
-    return toCommentDto(comment);
+        kind: "comment",
+        title: `${actor} ${parentId ? "respondió" : "comentó"} en ${doc.title}`,
+        excerpt: body,
+        documentId: id,
+      });
+      return toCommentDto(comment);
+    });
+  }
+
+  /** Cover tones are team palette keys. */
+  private async assertTone(tone: string): Promise<void> {
+    if (!(await this.prisma.team.count({ where: { id: tone } }))) throw new BadRequestException(`Unknown tone "${tone}"`);
   }
 
   private async assertValidParent(parentId: string, teamId: string): Promise<void> {
@@ -196,6 +235,30 @@ async function syncTaskMentions(tx: Prisma.TransactionClient, documentId: string
   }
 }
 
+/** People and task assignees mentioned with pills that weren't in the previous version of the page. */
+async function notifyNewMentions(
+  tx: Prisma.TransactionClient,
+  { documentId, title, actorId, before, after }: { documentId: string; title: string; actorId: string; before: string; after: string },
+): Promise<void> {
+  const added = (extract: (html: string) => string[]) => {
+    const previous = new Set(extract(before));
+    return extract(after).filter((id) => !previous.has(id));
+  };
+  const newPeople = added(extractUserMentions);
+  const newTasks = added(extractTaskMentions);
+  if (newPeople.length === 0 && newTasks.length === 0) return;
+
+  const actor = await nameOf(tx, actorId);
+  if (newPeople.length) {
+    const people = await tx.user.findMany({ where: { id: { in: newPeople } }, select: { id: true } });
+    await notify(tx, { recipients: people.map((p) => p.id), actorId, kind: "mention", title: `${actor} te mencionó en ${title}`, documentId });
+  }
+  const tasks = newTasks.length ? await tx.task.findMany({ where: { id: { in: newTasks } }, select: { id: true, assigneeId: true } }) : [];
+  for (const task of tasks) {
+    await notify(tx, { recipients: [task.assigneeId], actorId, kind: "mention", title: `${actor} mencionó ${task.id} en ${title}`, taskId: task.id, documentId });
+  }
+}
+
 function notFound(id: string): NotFoundException {
   return new NotFoundException(`Document "${id}" not found`);
 }
@@ -216,6 +279,9 @@ function toDto(doc: Omit<Document, "content">): DocumentDto {
   if (doc.propOwnerId != null) properties.ownerId = doc.propOwnerId;
   if (doc.propTags.length > 0) properties.tags = doc.propTags;
   if (Object.keys(properties).length > 0) dto.properties = properties;
+  if (doc.icon) dto.icon = doc.icon;
+  if (doc.coverTone) dto.coverTone = doc.coverTone;
+  if (doc.isDraft) dto.isDraft = true;
 
   return dto;
 }

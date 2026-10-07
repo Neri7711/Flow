@@ -15,7 +15,7 @@ export class CreateInvitationDto {
   @MaxLength(80)
   name!: string;
 
-  @IsIn(["leader", "member"])
+  @IsIn(["leader", "member", "guest"])
   role!: UserRole;
 }
 

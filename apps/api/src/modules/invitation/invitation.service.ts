@@ -34,7 +34,7 @@ export class InvitationService {
   async create(input: CreateInvitationDto, leader: SessionUser): Promise<{ invitation: InvitationDto; token: string }> {
     assertLeaderOf(leader, leader.teamId);
     if (await this.prisma.user.count({ where: { email: input.email } })) {
-      throw new ConflictException("Ya existe una cuenta con ese correo");
+      throw new ConflictException("Ya existe una cuenta con ese correo: agrégala desde Miembros");
     }
 
     const token = randomBytes(32).toString("base64url");
@@ -78,8 +78,22 @@ export class InvitationService {
   /** What the invitee sees before choosing a password. Unknown, used and expired links look the same. */
   async preview(token: string): Promise<InvitationPreviewDto> {
     const invitation = await this.findUsable(token);
-    const team = await this.prisma.team.findUniqueOrThrow({ where: { id: invitation.teamId }, select: { name: true } });
-    return { email: invitation.email, name: invitation.name, role: invitation.role, teamId: invitation.teamId, teamName: team.name };
+    const [team, inviter] = await Promise.all([
+      this.prisma.team.findUniqueOrThrow({ where: { id: invitation.teamId }, select: { name: true } }),
+      this.prisma.user.findUniqueOrThrow({
+        where: { id: invitation.invitedById },
+        select: { name: true, role: true, memberships: { where: { teamId: invitation.teamId }, select: { role: true } } },
+      }),
+    ]);
+    return {
+      email: invitation.email,
+      name: invitation.name,
+      role: invitation.role,
+      teamId: invitation.teamId,
+      teamName: team.name,
+      // "Invitación de Fer Ruiz · líder de Play": their role in the space they invite to.
+      invitedBy: { name: inviter.name, role: inviter.memberships[0]?.role ?? inviter.role },
+    };
   }
 
   /** Creates the account, uses up the link and signs the new member in. */
@@ -106,7 +120,9 @@ export class InvitationService {
           role: invitation.role,
           teamId: invitation.teamId,
           avatarTone: null,
+          memberships: { create: { teamId: invitation.teamId, role: invitation.role } },
         },
+        include: { memberships: true },
       });
       await recordActivity(tx, { teamId: invitation.teamId, actorId: created.id, summary: "se unió al equipo" });
       return created;

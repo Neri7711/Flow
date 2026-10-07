@@ -37,8 +37,8 @@ export class TaskController {
 
   /** Title, description, assignee, priority, label, due date, cycle, dependencies. */
   @Patch("tasks/:id")
-  update(@Param("id") id: string, @Body() body: UpdateTaskDto) {
-    return this.tasks.update(id, body);
+  update(@Param("id") id: string, @Body() body: UpdateTaskDto, @CurrentUser() user: SessionUser) {
+    return this.tasks.update(id, body, user.id);
   }
 
   @Delete("tasks/:id")

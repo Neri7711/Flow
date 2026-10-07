@@ -29,7 +29,7 @@ export class AuthService {
   async login(email: string, password: string): Promise<LoginResult> {
     this.assertNotLocked(email);
 
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findUnique({ where: { email }, include: { memberships: { orderBy: { position: "asc" } } } });
     // Same message whether the email or the password is wrong (no account enumeration).
     const valid = user?.passwordHash ? await verifyPassword(password, user.passwordHash) : false;
     if (!user || !valid) {

@@ -21,11 +21,11 @@ export class TriageController {
     return this.triage.create(body, user);
   }
 
-  /** Leaders only: creates the task in their team -> { request, task }. */
+  /** Leaders only: work -> creates the task ({ request, task }); join -> adds the member ({ request, membership }). */
   @Post(":id/accept")
   @HttpCode(200)
-  accept(@Param("id") id: string, @Body() { status }: AcceptTriageDto, @CurrentUser() user: SessionUser) {
-    return this.triage.accept(id, user, status);
+  accept(@Param("id") id: string, @Body() body: AcceptTriageDto, @CurrentUser() user: SessionUser) {
+    return this.triage.accept(id, user, body);
   }
 
   @Post(":id/decline")

@@ -371,9 +371,11 @@ describe("members", () => {
     nico = as(await login("nico@flow.test"));
   });
 
-  test("filter people by team", async () => {
+  test("filter people by team; the role is the one in that space", async () => {
     assert.equal((await moge.get("/users?teamId=pl")).length, 4);
-    assert.deepEqual(await moge.get("/users?teamId=cs"), []);
+    const cs = await moge.get("/users?teamId=cs");
+    assert.deepEqual(cs.map((user) => [user.id, user.role, user.teamId]), [["u-ana", "leader", "pl"]]);
+    assert.deepEqual(cs[0].memberships.map((m) => [m.teamId, m.role]), [["pl", "member"], ["cs", "leader"]]);
   });
 
   test("leaders change roles in their team, never their own; members can't", async () => {
@@ -408,7 +410,14 @@ describe("invitations", () => {
   test("the link previews the invitation without a session", async () => {
     const preview = await request("GET", `/invitations/preview/${token}`);
     assert.equal(preview.status, 200);
-    assert.deepEqual(preview.body, { email: "sofia@flow.test", name: "Sofía Ramírez", role: "member", teamId: "pl", teamName: "Play" });
+    assert.deepEqual(preview.body, {
+      email: "sofia@flow.test",
+      name: "Sofía Ramírez",
+      role: "member",
+      teamId: "pl",
+      teamName: "Play",
+      invitedBy: { name: "Moge", role: "leader" },
+    });
     assert.equal((await request("GET", "/invitations/preview/not-a-token")).status, 404);
   });
 
@@ -496,7 +505,9 @@ describe("weekly note", () => {
 
 describe("sign-in throttling", () => {
   test("after 5 failures the email is locked for a while, even with the right password", async () => {
-    const attempt = (password) => request("POST", "/auth/login", { body: { email: "throttle@flow.test", password } });
+    // A fresh address each run: the lock lives in the API process for 15 minutes.
+    const email = `throttle-${Date.now()}@flow.test`;
+    const attempt = (password) => request("POST", "/auth/login", { body: { email, password } });
     for (let i = 0; i < 5; i++) assert.equal((await attempt("nope")).status, 401);
     assert.equal((await attempt("nope")).status, 429);
     // Other accounts are unaffected.
@@ -511,5 +522,304 @@ describe("live dates", () => {
     assert.ok(Date.parse(cycle.startsAt) <= now && now <= Date.parse(cycle.endsAt), "the seeded cycle is running now");
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City" }).format(new Date());
     assert.ok((await moge.get("/tasks?teamId=pl")).some((task) => task.dueDate === today), "some tasks are due today");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// What the web needs next (memberships, notifications, attendees, settings, profile…)
+// ---------------------------------------------------------------------------------------------
+
+describe("notifications", () => {
+  let ana2;
+  let nico;
+  let fer;
+  let first; // assigned to Ana
+  let second; // assigned to Nico, blocked by `first`
+  // Unread only: `before` marks everything read, so these are the notifications this suite caused.
+  const inbox = async (client) => (await client.get("/notifications?unread=true")).map((n) => `${n.kind}: ${n.title}`);
+
+  before(async () => {
+    ana2 = as(await login("ana@flow.test"));
+    nico = as(await login("nico@flow.test"));
+    fer = as(await login("fer@flow.test"));
+    // Start every inbox empty.
+    for (const client of [moge, ana2, nico, fer]) await client.post("/notifications/read-all", {}, 200);
+  });
+
+  test("assignments notify the new assignee (never yourself)", async () => {
+    ({ body: first } = await moge.post("/tasks", { teamId: "pl", title: "Menú principal", status: "todo", assigneeId: "u-ana" }, 201));
+    ({ body: second } = await moge.post("/tasks", { teamId: "pl", title: "Música del menú", status: "todo" }, 201));
+    await moge.patch(`/tasks/${second.id}`, { assigneeId: "u-nico", blockedByIds: [first.id] }, 200);
+    await moge.patch(`/tasks/${second.id}`, { title: "Música del menú (v2)" }, 200); // same assignee: no new notification
+    await moge.post("/tasks", { teamId: "pl", title: "Mía", status: "todo", assigneeId: "u-moge" }, 201);
+
+    assert.deepEqual((await inbox(ana2)).filter((t) => t.startsWith("assignment")), [`assignment: Moge te asignó ${first.id}`]);
+    assert.deepEqual((await inbox(nico)).filter((t) => t.startsWith("assignment")), [`assignment: Moge te asignó ${second.id}`]);
+    assert.deepEqual(await inbox(moge), []);
+  });
+
+  test("status changes notify the assignee and whoever the task was blocking", async () => {
+    await moge.patch(`/tasks/${first.id}/status`, { status: "in_review" }, 200);
+    assert.equal((await inbox(ana2))[0], `status: Moge movió ${first.id} a En revisión`);
+    assert.equal((await inbox(nico))[0], `status: ${first.id}, que bloquea ${second.id}, pasó a En revisión`);
+  });
+
+  test("task comments: @mentions notify those people; the assignee hears about the rest", async () => {
+    await fer.post(`/tasks/${first.id}/comments`, { body: "@Nico revisa el loop, porfa" }, 201);
+    assert.equal((await inbox(nico))[0], `mention: Fer te mencionó en ${first.id}`);
+    assert.equal((await inbox(ana2))[0], `comment: Fer comentó en ${first.id}`);
+    const [mention] = await nico.get("/notifications");
+    assert.equal(mention.excerpt, "@Nico revisa el loop, porfa");
+    assert.equal(mention.taskId, first.id);
+    assert.equal(mention.teamId, "pl");
+  });
+
+  test("page comments: replies notify the thread; pills notify only when newly added", async () => {
+    const { body: thread } = await nico.post("/documents/pl-roadmap/comments", { body: "¿Movemos la entrega?" }, 201);
+    await fer.post("/documents/pl-roadmap/comments", { body: "Sí, una semana", parentId: thread.id }, 201);
+    assert.equal((await inbox(nico))[0], "comment: Fer respondió en Roadmap del semestre");
+
+    const pills = `<p><span data-type="user-mention" data-id="u-fer">Fer</span> y <span data-type="task-mention" data-id="${first.id}">${first.id}</span></p>`;
+    await moge.patch("/documents/pl-roadmap", { content: pills }, 200);
+    await moge.patch("/documents/pl-roadmap", { content: pills + "<p>más texto</p>" }, 200); // autosave: nothing new
+    const fers = (await inbox(fer)).filter((t) => t.startsWith("mention"));
+    assert.deepEqual(fers, ["mention: Moge te mencionó en Roadmap del semestre"]);
+    assert.equal((await inbox(ana2))[0], `mention: Moge mencionó ${first.id} en Roadmap del semestre`);
+  });
+
+  test("unread count, read one, read all; only your own", async () => {
+    const before = (await nico.get("/notifications/unread-count")).count;
+    assert.ok(before >= 3);
+    const [latest] = await nico.get("/notifications?unread=true");
+    assert.equal((await nico.patch(`/notifications/${latest.id}/read`, {}, 200)).body.readAt !== null, true);
+    assert.equal((await nico.get("/notifications/unread-count")).count, before - 1);
+    await ana2.patch(`/notifications/${latest.id}/read`, {}, 404); // someone else's
+    assert.equal((await nico.post("/notifications/read-all", {}, 200)).body.count, before - 1);
+    assert.deepEqual(await nico.get("/notifications?unread=true"), []);
+    assert.ok((await nico.get("/notifications")).length >= 3); // read ones are still listed
+  });
+});
+
+describe("inbox: details, linked task, assign on accept, join requests", () => {
+  let ana2;
+  let nico;
+  before(async () => {
+    ana2 = as(await login("ana@flow.test"));
+    nico = as(await login("nico@flow.test"));
+  });
+
+  test("a work request carries details; accepting assigns, dates and links in one step", async () => {
+    const { body: request } = await moge.post(
+      "/triage",
+      { toTeamId: "cs", title: "Input para el control", description: "Soporte para gamepad", dueDate: "2026-12-15", linkedTaskId: "PL-44" },
+      201,
+    );
+    assert.deepEqual([request.kind, request.description, request.dueDate, request.linkedTaskId], ["work", "Soporte para gamepad", "2026-12-15", "PL-44"]);
+    await moge.post("/triage", { toTeamId: "cs", title: "x", linkedTaskId: "XX-1" }, 400);
+
+    const { body } = await ana2.post(`/triage/${request.id}/accept`, { assigneeId: "u-ana", status: "backlog" }, 200);
+    assert.deepEqual(
+      [body.task.teamId, body.task.assigneeId, body.task.status, body.task.description, body.task.dueDate],
+      ["cs", "u-ana", "backlog", "Soporte para gamepad", "2026-12-15"],
+    );
+    assert.ok((await moge.get("/tasks/PL-44")).blockedByIds.includes(body.task.id), "PL-44 now waits on the new task");
+  });
+
+  test("join requests: once per person, not for spaces you're in; a leader adds you", async () => {
+    await ana2.post("/triage", { kind: "join", toTeamId: "cs" }, 409); // already in CS
+    const { body: request } = await nico.post("/triage", { kind: "join", toTeamId: "cs", description: "Quiero ayudar con audio" }, 201);
+    assert.deepEqual([request.kind, request.title, request.requesterId], ["join", "Quiere unirse a Computer Science", "u-nico"]);
+    await nico.post("/triage", { kind: "join", toTeamId: "cs" }, 409); // already pending
+    assert.ok((await ana2.get("/triage?teamId=cs")).some((item) => item.id === request.id && item.kind === "join"));
+
+    await moge.post(`/triage/${request.id}/accept`, {}, 403); // not a CS leader
+    const { body } = await ana2.post(`/triage/${request.id}/accept`, { role: "guest" }, 200);
+    assert.deepEqual(body.membership, { userId: "u-nico", teamId: "cs", role: "guest" });
+    const me = await nico.get("/users/me");
+    assert.deepEqual(me.memberships.map((m) => [m.teamId, m.role]), [["pl", "member"], ["cs", "guest"]]);
+    assert.deepEqual([me.teamId, me.role], ["pl", "member"]); // home space unchanged
+  });
+});
+
+describe("memberships", () => {
+  let ana2;
+  before(async () => {
+    ana2 = as(await login("ana@flow.test"));
+  });
+
+  test("leaders add existing people to their space, and change roles there", async () => {
+    await moge.post("/teams/cs/members", { userId: "u-fer", role: "guest" }, 403); // not a CS leader
+    const { body } = await ana2.post("/teams/cs/members", { userId: "u-fer", role: "guest" }, 200);
+    assert.deepEqual([body.id, body.role], ["u-fer", "guest"]);
+    await ana2.post("/teams/cs/members", { userId: "u-fer", role: "member" }, 409);
+    await ana2.post("/teams/cs/members", { userId: "u-ghost", role: "member" }, 400);
+
+    const changed = await ana2.patch("/users/u-fer/role", { role: "member", teamId: "cs" }, 200);
+    assert.equal(changed.body.role, "member");
+    const fer = await moge.get("/users/u-fer");
+    assert.deepEqual([fer.role, fer.teamId], ["leader", "pl"]); // home role untouched
+  });
+
+  test("a leader role counts only in its own space", async () => {
+    // Ana leads CS but is a member in Play.
+    await ana2.patch("/teams/pl", { weeklyNote: "x" }, 403);
+    await ana2.patch("/teams/cs", { weeklyNote: "Sprint de arquitectura" }, 200);
+  });
+
+  test("removing: not yourself, not from someone's home space", async () => {
+    await ana2.delete("/teams/cs/members/u-ana", undefined, 400);
+    await moge.delete("/teams/pl/members/u-ana", undefined, 400); // Play is Ana's home space
+    await ana2.delete("/teams/cs/members/u-fer", undefined, 200);
+    assert.equal((await moge.get("/users/u-fer")).memberships.some((m) => m.teamId === "cs"), false);
+    await ana2.delete("/teams/cs/members/u-fer", undefined, 404);
+  });
+
+  test("guests can be invited; the preview names who invited", async () => {
+    const { body } = await moge.post("/invitations", { email: "mentora@flow.test", name: "Lucía Vega", role: "guest" }, 201);
+    assert.equal(body.invitation.role, "guest");
+    const preview = await request("GET", `/invitations/preview/${body.token}`);
+    assert.deepEqual(preview.body.invitedBy, { name: "Moge", role: "leader" });
+    await moge.post("/invitations", { email: "ana@flow.test", name: "Ana", role: "member" }, 409);
+  });
+
+  test("last activity is tracked for presence", async () => {
+    const me = await moge.get("/users/me");
+    assert.ok(Date.now() - Date.parse(me.lastActiveAt) < 5 * 60 * 1000);
+  });
+});
+
+describe("profile", () => {
+  let sofia;
+  before(async () => {
+    const { body } = await request("POST", "/auth/login", { body: { email: "sofia@flow.test", password: "una-clave-segura" } });
+    sofia = as(body.token);
+  });
+
+  // 1x1 transparent PNG.
+  const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64");
+  const upload = async (token, bytes, type) => {
+    const form = new FormData();
+    form.append("file", new Blob([bytes], { type }), "foto");
+    const response = await fetch(`${BASE}/users/me/avatar`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body: form });
+    return { status: response.status, body: await response.json() };
+  };
+  let sofiaToken;
+  before(async () => {
+    sofiaToken = (await request("POST", "/auth/login", { body: { email: "sofia@flow.test", password: "una-clave-segura" } })).body.token;
+  });
+
+  test("edit your own name, nickname and area (initials follow the name)", async () => {
+    const { body } = await sofia.patch("/users/me", { name: "Sofía Ramírez Ortiz", shortName: "Sofi", area: "Producción" }, 200);
+    assert.deepEqual([body.name, body.shortName, body.initials, body.area], ["Sofía Ramírez Ortiz", "Sofi", "SR", "Producción"]);
+    assert.equal((await sofia.patch("/users/me", { area: null }, 200)).body.area, null);
+    await sofia.patch("/users/me", { name: "" }, 400);
+    await sofia.patch("/users/me", { role: "leader" }, 400); // not editable here
+  });
+
+  test("profile photo: real images only, served publicly, replaceable and removable", async () => {
+    assert.equal((await upload(sofiaToken, Buffer.from("no soy una imagen"), "image/png")).status, 400);
+    const { status, body } = await upload(sofiaToken, PNG, "image/png");
+    assert.equal(status, 200);
+    assert.match(body.avatarUrl, /^\/api\/uploads\/avatars\/[\w-]+\.png$/);
+    const photo = await fetch(BASE.replace(/\/api$/, "") + body.avatarUrl);
+    assert.equal(photo.status, 200);
+    assert.equal(photo.headers.get("content-type"), "image/png");
+    assert.equal((await fetch(`${BASE}/uploads/avatars/..%2F..%2F.env`)).status, 404);
+
+    const { body: cleared } = await sofia.delete("/users/me/avatar", undefined, 200);
+    assert.equal(cleared.avatarUrl, null);
+    assert.equal((await fetch(BASE.replace(/\/api$/, "") + body.avatarUrl)).status, 404);
+  });
+
+  test("onboarding is remembered", async () => {
+    assert.equal((await sofia.get("/users/me")).onboardedAt, null);
+    assert.ok((await sofia.post("/users/me/onboarded", {}, 200)).body.onboardedAt);
+  });
+});
+
+describe("page look", () => {
+  test("icon, cover and draft label; only set ones are sent", async () => {
+    const { body: page } = await moge.post("/documents", { teamId: "pl", title: "Retro", icon: "🎮", coverTone: "ii", isDraft: true }, 201);
+    assert.deepEqual([page.icon, page.coverTone, page.isDraft], ["🎮", "ii", true]);
+    await moge.post("/documents", { teamId: "pl", title: "x", coverTone: "zz" }, 400);
+    const { body } = await moge.patch(`/documents/${page.id}`, { icon: null, coverTone: null, isDraft: false }, 200);
+    assert.deepEqual([body.icon, body.coverTone, body.isDraft], [undefined, undefined, undefined]);
+    assert.equal((await moge.get("/documents/pl-roadmap")).isDraft, undefined);
+  });
+});
+
+describe("calendar: attendees, all teams, multi-day", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const inDays = (days) => new Date(Date.now() + days * DAY).toISOString();
+  let hackathon;
+
+  test("seeded events carry attendees and the all-day flag", async () => {
+    const events = await moge.get(`/events?teamId=pl&from=${inDays(-1)}&to=${inDays(30)}`);
+    const kickoff = events.find((event) => event.id === "ev-kickoff");
+    assert.deepEqual([kickoff.allDay, kickoff.attendeeIds], [false, ["u-ana", "u-fer", "u-moge", "u-nico"]]);
+    assert.equal(events.find((event) => event.id === "ev-builds").allDay, true);
+  });
+
+  test("without teamId, every team's events", async () => {
+    const all = await moge.get(`/events?from=${inDays(-1)}&to=${inDays(30)}`);
+    assert.deepEqual([...new Set(all.map((event) => event.teamId))].sort(), ["cs", "pl"]);
+  });
+
+  test("multi-day events show up in any range they overlap", async () => {
+    ({ body: hackathon } = await moge.post(
+      "/events",
+      { teamId: "ii", title: "Hackathon", startsAt: inDays(20), endsAt: inDays(21.9), allDay: true, attendeeIds: ["u-nico", "u-ana", "u-nico"] },
+      201,
+    ));
+    assert.deepEqual([hackathon.allDay, hackathon.attendeeIds], [true, ["u-ana", "u-nico"]]);
+    // A range that starts on day 2 of the hackathon still includes it.
+    assert.ok((await moge.get(`/events?teamId=ii&from=${inDays(21)}&to=${inDays(23)}`)).some((e) => e.id === hackathon.id));
+    assert.equal((await moge.get(`/events?teamId=ii&from=${inDays(23)}&to=${inDays(25)}`)).some((e) => e.id === hackathon.id), false);
+    await moge.post("/events", { teamId: "ii", title: "x", startsAt: inDays(1), attendeeIds: ["u-ghost"] }, 400);
+  });
+
+  test("attendees are replaced on update", async () => {
+    const { body } = await moge.patch(`/events/${hackathon.id}`, { attendeeIds: ["u-fer"] }, 200);
+    assert.deepEqual(body.attendeeIds, ["u-fer"]);
+  });
+});
+
+describe("cycle settings", () => {
+  let ana2;
+  before(async () => {
+    ana2 = as(await login("ana@flow.test"));
+  });
+
+  test("settings with a preview of the next cycles", async () => {
+    const settings = await moge.get("/teams/pl/cycle-settings");
+    assert.deepEqual([settings.enabled, settings.lengthWeeks, settings.rollover], [true, 2, "next_cycle"]);
+    const cycle = await moge.get("/cycles/active?teamId=pl");
+    assert.deepEqual(settings.upcoming.map((c) => c.number), [5, 6, 7]);
+    assert.ok(Date.parse(settings.upcoming[0].startsAt) > Date.parse(cycle.endsAt));
+    const lengthDays = (Date.parse(settings.upcoming[0].endsAt) - Date.parse(settings.upcoming[0].startsAt)) / (24 * 60 * 60 * 1000);
+    assert.ok(lengthDays > 13.9 && lengthDays < 14);
+    // Spaces without settings get the defaults.
+    assert.equal((await moge.get("/teams/me/cycle-settings")).lengthWeeks, 2);
+  });
+
+  test("only that space's leaders change them; values are validated", async () => {
+    await ana2.patch("/teams/pl/cycle-settings", { lengthWeeks: 1 }, 403);
+    await moge.patch("/teams/pl/cycle-settings", { lengthWeeks: 4 }, 400);
+    await moge.patch("/teams/pl/cycle-settings", { startDay: 7 }, 400);
+    const { body } = await moge.patch("/teams/pl/cycle-settings", { lengthWeeks: 1, rollover: "backlog" }, 200);
+    assert.deepEqual([body.lengthWeeks, body.rollover], [1, "backlog"]);
+  });
+
+  test("closing a cycle creates the next one and rolls unfinished work over", async () => {
+    await ana2.post("/cycles/pl-c4/close", {}, 403);
+    const unfinished = (await moge.get("/tasks?cycleId=pl-c4")).filter((task) => task.status !== "done").map((task) => task.id);
+    const { body } = await moge.post("/cycles/pl-c4/close", {}, 200);
+    assert.equal(body.next.number, 5);
+    assert.deepEqual([...body.moved].sort(), [...unfinished].sort());
+    // rollover = backlog: back to the backlog, out of any cycle.
+    const moved = await moge.get(`/tasks/${unfinished[0]}`);
+    assert.deepEqual([moved.status, moved.cycleId], ["backlog", undefined]);
+    assert.equal((await moge.get("/tasks?cycleId=pl-c4")).every((task) => task.status === "done"), true);
+    await moge.post("/cycles/pl-c4/close", {}, 409); // cycle 5 already exists
   });
 });

@@ -32,9 +32,11 @@ enum TaskPriority {
   high
 }
 
+/// Role of a person in one space (see Membership). Guests (mentors) read and comment.
 enum UserRole {
   leader
   member
+  guest
 }
 
 enum TaskEventKind {
@@ -48,15 +50,34 @@ enum TriageStatus {
   declined
 }
 
+/// work: another team asks for something; join: a person asks to join the space.
+enum TriageKind {
+  work
+  join
+}
+
+enum NotificationKind {
+  mention
+  assignment
+  comment
+  status
+}
+
+/// What happens to unfinished tasks when a cycle closes.
+enum CycleRollover {
+  next_cycle
+  backlog
+}
+
 /// Team ids double as URL slugs and theme keys ("cs" | "pl" | "me" | "ii").
 model Team {
-  id           String @id
+  id           String  @id
   name         String
   abbreviation String
   mascotAlt    String
-  position     Int    @default(autoincrement())
+  position     Int     @default(autoincrement())
   /// Last number handed out for task identifiers (PL-56 -> next is PL-57).
-  taskSeq      Int    @default(0)
+  taskSeq      Int     @default(0)
   /// Weekly highlight shown on the space's home; leaders edit it.
   weeklyNote   String?
 
@@ -70,24 +91,41 @@ model Team {
   triageOutgoing TriageRequest[] @relation("TriageFrom")
   triageIncoming TriageRequest[] @relation("TriageTo")
   invitations    Invitation[]
+  memberships    Membership[]
+  cycleSettings  CycleSettings?
 }
 
 model User {
-  id           String   @id
+  id           String    @id
   /// Sign-in identifier; stored lowercase.
-  email        String   @unique
+  email        String    @unique
   /// scrypt hash (see src/auth/password.ts); null until the user sets a password.
   passwordHash String?
   name         String
   shortName    String
   initials     String
+  /// Role in the home space (mirrors that space's Membership; kept for the web's current contract).
   role         UserRole
+  /// Home space: where the user lands after signing in. Every space they belong to is in `memberships`.
   teamId       String
   /// Soft team tint for the avatar; null renders the neutral tone.
   avatarTone   String?
-  position     Int      @default(autoincrement())
+  position     Int       @default(autoincrement())
+  /// Work area within the team ("Arte", "Programación", ...).
+  area         String?
+  /// Last authenticated request (refreshed at most once a minute). Drives "última actividad" and presence.
+  lastActiveAt DateTime?
+  /// File name of the uploaded profile photo (under UPLOADS_DIR/avatars).
+  avatarPath   String?
+  /// Set when the user finishes the onboarding, so it isn't shown again.
+  onboardedAt  DateTime?
 
   team Team @relation(fields: [teamId], references: [id])
+
+  memberships         Membership[]
+  notifications       Notification[]  @relation("NotificationRecipient")
+  notificationsCaused Notification[]  @relation("NotificationActor")
+  eventAttendances    EventAttendee[]
 
   assignedTasks     Task[]            @relation("TaskAssignee")
   taskEvents        TaskEvent[]
@@ -146,6 +184,9 @@ model Task {
 
   /// Documents whose content mentions this task's identifier (backlinks).
   mentions DocumentTaskMention[]
+
+  notifications Notification[]
+  triageLinks   TriageRequest[] @relation("TriageLinkedTask")
 
   @@index([teamId, position])
   @@index([cycleId])
@@ -252,15 +293,23 @@ model Document {
   propOwnerId String?
   propTags    String[] @default([])
 
+  /// Emoji (or short text) shown before the title.
+  icon      String?
+  /// Team palette key for the cover; null keeps the space's color.
+  coverTone String?
+  /// "BORRADOR" label: work in progress.
+  isDraft   Boolean @default(false)
+
   team      Team       @relation(fields: [teamId], references: [id])
   updatedBy User       @relation("DocumentUpdatedBy", fields: [updatedById], references: [id])
   /// Deleting a page deletes its whole subtree.
   parent    Document?  @relation("DocumentTree", fields: [parentId], references: [id], onDelete: Cascade)
   children  Document[] @relation("DocumentTree")
 
-  comments     DocumentComment[]
-  sourcedTasks Task[]                @relation("TaskSourceDocument")
-  taskMentions DocumentTaskMention[]
+  comments      DocumentComment[]
+  sourcedTasks  Task[]                @relation("TaskSourceDocument")
+  taskMentions  DocumentTaskMention[]
+  notifications Notification[]
 
   @@index([teamId, position])
   @@index([teamId, updatedAt])
@@ -305,14 +354,30 @@ model CalendarEvent {
   teamId   String
   title    String
   startsAt DateTime
-  /// null for all-day events.
+  /// null for a single all-day event; set for timed or multi-day events.
   endsAt   DateTime?
+  /// Explicit all-day flag (multi-day events like a 2-day hackathon also have `endsAt`).
+  allDay   Boolean   @default(false)
   /// Dot color in event lists.
   tone     String
 
-  team Team @relation(fields: [teamId], references: [id])
+  team      Team            @relation(fields: [teamId], references: [id])
+  attendees EventAttendee[]
 
   @@index([teamId, startsAt])
+  @@index([startsAt])
+}
+
+/// Who attends an event (any team): lets the calendar warn about clashes.
+model EventAttendee {
+  eventId String
+  userId  String
+
+  event CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, userId])
+  @@index([userId])
 }
 
 model Activity {
@@ -333,22 +398,30 @@ model Activity {
 
 /// A request from another team (or a new member) waiting for a leader's decision.
 model TriageRequest {
-  id          String       @id @default(cuid())
-  fromTeamId  String
-  toTeamId    String
-  title       String
-  requesterId String?
-  createdAt   DateTime
-  status      TriageStatus @default(pending)
-  decidedAt   DateTime?
-  decidedById String?
+  id           String       @id @default(cuid())
+  fromTeamId   String
+  toTeamId     String
+  title        String
+  requesterId  String?
+  createdAt    DateTime
+  status       TriageStatus @default(pending)
+  decidedAt    DateTime?
+  decidedById  String?
   /// Task created in the receiving team when the request was accepted.
-  taskId      String?
+  taskId       String?
+  kind         TriageKind   @default(work)
+  /// Details for the receiving team.
+  description  String?
+  /// Desired date, calendar day "YYYY-MM-DD"; becomes the task's due date.
+  dueDate      String?
+  /// Requester's task that waits on this request: once accepted, it's blocked by the new task.
+  linkedTaskId String?
 
-  fromTeam  Team  @relation("TriageFrom", fields: [fromTeamId], references: [id])
-  toTeam    Team  @relation("TriageTo", fields: [toTeamId], references: [id])
-  requester User? @relation("TriageRequester", fields: [requesterId], references: [id])
-  decidedBy User? @relation("TriageDecider", fields: [decidedById], references: [id])
+  fromTeam   Team  @relation("TriageFrom", fields: [fromTeamId], references: [id])
+  toTeam     Team  @relation("TriageTo", fields: [toTeamId], references: [id])
+  requester  User? @relation("TriageRequester", fields: [requesterId], references: [id])
+  decidedBy  User? @relation("TriageDecider", fields: [decidedById], references: [id])
+  linkedTask Task? @relation("TriageLinkedTask", fields: [linkedTaskId], references: [id], onDelete: SetNull)
 
   @@index([toTeamId, status, createdAt])
 }
@@ -373,4 +446,60 @@ model Invitation {
 
   @@index([teamId])
   @@index([email])
+}
+
+/// A person's place in a space. People can belong to several spaces with a different role in each.
+model Membership {
+  userId   String
+  teamId   String
+  role     UserRole
+  joinedAt DateTime @default(now())
+  position Int      @default(autoincrement())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([userId, teamId])
+  @@index([teamId, position])
+}
+
+/// Personal inbox entry (mentions, assignments, comments, status changes).
+model Notification {
+  id         String           @id @default(cuid())
+  /// Recipient.
+  userId     String
+  /// Who caused it (null if that account was removed).
+  actorId    String?
+  kind       NotificationKind
+  /// Ready-to-show line ("Ana te asignó PL-42").
+  title      String
+  /// Snippet of the comment or text, when there is one.
+  excerpt    String?
+  taskId     String?
+  documentId String?
+  createdAt  DateTime
+  readAt     DateTime?
+  /// Tiebreaker for entries with the same `createdAt`.
+  position   Int              @default(autoincrement())
+
+  user     User      @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  actor    User?     @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  task     Task?     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  document Document? @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+}
+
+/// How a space runs its cycles (leaders edit it in Ajustes / Ciclos).
+model CycleSettings {
+  teamId      String        @id
+  enabled     Boolean       @default(true)
+  /// 1 to 3 weeks.
+  lengthWeeks Int           @default(2)
+  /// Day cycles start on: 0 = domingo, 1 = lunes, ..., 6 = sabado.
+  startDay    Int           @default(1)
+  rollover    CycleRollover @default(next_cycle)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
 }
