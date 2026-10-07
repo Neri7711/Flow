@@ -57,6 +57,8 @@ model Team {
   position     Int    @default(autoincrement())
   /// Last number handed out for task identifiers (PL-56 -> next is PL-57).
   taskSeq      Int    @default(0)
+  /// Weekly highlight shown on the space's home; leaders edit it.
+  weeklyNote   String?
 
   users          User[]
   tasks          Task[]

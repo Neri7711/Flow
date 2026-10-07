@@ -16,6 +16,8 @@ export type TeamDto = {
   name: string;
   abbreviation: string;
   mascotAlt: string;
+  /** Weekly highlight on the space's home (null: the web shows its default line). */
+  weeklyNote: string | null;
 };
 
 export type UserDto = {

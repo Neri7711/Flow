@@ -1,8 +1,8 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
 
 import { CurrentUser, type SessionUser } from "@/auth/session";
 
-import { AddCommentDto, CreateTaskDto, SetStatusDto, TaskQueryDto } from "./dto";
+import { AddCommentDto, CreateTaskDto, SetStatusDto, TaskQueryDto, UpdateTaskDto } from "./dto";
 import { TaskService } from "./task.service";
 
 @Controller()
@@ -33,6 +33,17 @@ export class TaskController {
   @Post("tasks")
   create(@Body() body: CreateTaskDto, @CurrentUser() user: SessionUser) {
     return this.tasks.create(body, user.id);
+  }
+
+  /** Title, description, assignee, priority, label, due date, cycle, dependencies. */
+  @Patch("tasks/:id")
+  update(@Param("id") id: string, @Body() body: UpdateTaskDto) {
+    return this.tasks.update(id, body);
+  }
+
+  @Delete("tasks/:id")
+  remove(@Param("id") id: string) {
+    return this.tasks.remove(id);
   }
 
   @Patch("tasks/:id/status")

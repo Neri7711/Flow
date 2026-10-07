@@ -333,22 +333,26 @@ describe("inbox (triage)", () => {
 });
 
 describe("calendar", () => {
-  const october = "/events?teamId=pl&from=2026-10-01T06:00:00.000Z&to=2026-11-01T06:00:00.000Z";
+  // The seed dates the demo relative to today: the Play events fall in the next ~10 days.
+  const DAY = 24 * 60 * 60 * 1000;
+  const inDays = (days) => new Date(Date.now() + days * DAY).toISOString();
+  const nextMonth = `/events?teamId=pl&from=${inDays(-1)}&to=${inDays(30)}`;
   let created;
 
   test("events in a date range", async () => {
-    assert.deepEqual((await moge.get(october)).map((event) => event.id), ["ev-kickoff", "ev-playtest", "ev-builds"]);
-    assert.equal((await moge.raw("/events?teamId=pl&from=2026-11-01T00:00:00Z&to=2026-10-01T00:00:00Z")).status, 400);
+    assert.deepEqual((await moge.get(nextMonth)).map((event) => event.id), ["ev-kickoff", "ev-playtest", "ev-builds"]);
+    assert.deepEqual(await moge.get(`/events?teamId=pl&from=${inDays(-30)}&to=${inDays(-20)}`), []);
+    assert.equal((await moge.raw(`/events?teamId=pl&from=${inDays(30)}&to=${inDays(1)}`)).status, 400);
     assert.equal((await moge.raw("/events?teamId=pl")).status, 400);
   });
 
   test("create validates the span and the tone, and shows up in the feed", async () => {
-    const base = { teamId: "pl", title: "Retro del ciclo", startsAt: "2026-10-12T17:00:00-06:00" };
-    await ana.post("/events", { ...base, endsAt: "2026-10-12T16:00:00-06:00" }, 400);
+    const base = { teamId: "pl", title: "Retro del ciclo", startsAt: inDays(12) };
+    await ana.post("/events", { ...base, endsAt: inDays(11.9) }, 400);
     await ana.post("/events", { ...base, tone: "zz" }, 400);
-    ({ body: created } = await ana.post("/events", { ...base, endsAt: "2026-10-12T18:00:00-06:00" }, 201));
+    ({ body: created } = await ana.post("/events", { ...base, endsAt: inDays(12.05) }, 201));
     assert.equal(created.tone, "pl");
-    assert.ok((await moge.get(october)).some((event) => event.id === created.id));
+    assert.ok((await moge.get(nextMonth)).some((event) => event.id === created.id));
     const [latest] = await moge.get("/activity/recent?teamId=pl&limit=1");
     assert.equal(`${latest.actorId}: ${latest.summary}`, "u-ana: agregó Retro del ciclo al calendario");
   });
@@ -430,5 +434,82 @@ describe("invitations", () => {
     await nico.delete(`/invitations/${body.invitation.id}`, undefined, 403);
     await moge.delete(`/invitations/${body.invitation.id}`, undefined, 200);
     assert.equal((await request("GET", `/invitations/preview/${body.token}`)).status, 404);
+  });
+});
+
+describe("task editing", () => {
+  test("edit fields; null clears them; the contract shape is kept", async () => {
+    const { body } = await moge.patch(
+      "/tasks/PL-46",
+      { title: "Pantalla de game over (v2)", description: "Con botón de reintentar", assigneeId: "u-ana", priority: "medium", labelId: "art", dueDate: "2026-12-01" },
+      200,
+    );
+    assert.deepEqual(
+      [body.title, body.description, body.assigneeId, body.priority, body.labelId, body.dueDate],
+      ["Pantalla de game over (v2)", "Con botón de reintentar", "u-ana", "medium", "art", "2026-12-01"],
+    );
+    const { body: cleared } = await moge.patch("/tasks/PL-46", { description: null, assigneeId: null, priority: null, labelId: null, dueDate: null }, 200);
+    assert.deepEqual([cleared.description, cleared.assigneeId, cleared.priority, cleared.labelId, cleared.dueDate], [undefined, null, undefined, null, undefined]);
+  });
+
+  test("invalid values are refused", async () => {
+    await moge.patch("/tasks/PL-46", { priority: "urgent" }, 400);
+    await moge.patch("/tasks/PL-46", { dueDate: "1/12/2026" }, 400);
+    await moge.patch("/tasks/PL-46", { title: "" }, 400);
+    await moge.patch("/tasks/PL-46", { assigneeId: "u-ghost" }, 400);
+    await moge.patch("/tasks/XX-1", { title: "x" }, 404);
+  });
+
+  test("dependencies: replace the list, no self-blocks, no cycles", async () => {
+    // Seed: CS-21 blocks PL-42, PL-42 blocks PL-47.
+    await moge.patch("/tasks/PL-47", { blockedByIds: ["PL-47"] }, 400);
+    await moge.patch("/tasks/CS-21", { blockedByIds: ["PL-47"] }, 400); // PL-47 -> PL-42 -> CS-21 would loop
+    await moge.patch("/tasks/PL-42", { blockedByIds: ["XX-99"] }, 400);
+    const { body } = await moge.patch("/tasks/PL-46", { blockedByIds: ["PL-44", "PL-44", "CS-17"] }, 200);
+    assert.deepEqual([...body.blockedByIds].sort(), ["CS-17", "PL-44"]);
+    assert.deepEqual((await moge.patch("/tasks/PL-46", { blockedByIds: [] }, 200)).body.blockedByIds, []);
+  });
+
+  test("deleting a task removes it with its history and links", async () => {
+    await moge.delete("/tasks/PL-47", undefined, 200);
+    await moge.raw("/tasks/PL-47", undefined, 404);
+    await moge.delete("/tasks/PL-47", undefined, 404);
+    assert.equal((await moge.get("/tasks")).some((task) => task.blockedByIds.includes("PL-47")), false);
+  });
+});
+
+describe("weekly note", () => {
+  let ana2;
+  before(async () => {
+    ana2 = as(await login("ana@flow.test"));
+  });
+
+  test("teams carry their note; leaders edit theirs; empty clears it", async () => {
+    assert.equal((await request("GET", "/teams/pl")).body.weeklyNote, "Esta semana arranca la game jam de otoño.");
+    assert.equal((await request("PATCH", "/teams/pl", { body: { weeklyNote: "x" } })).status, 401);
+    await ana2.patch("/teams/pl", { weeklyNote: "x" }, 403); // member
+    await moge.patch("/teams/cs", { weeklyNote: "x" }, 403); // leader of another team
+    assert.equal((await moge.patch("/teams/pl", { weeklyNote: "  Semana de playtest  " }, 200)).body.weeklyNote, "Semana de playtest");
+    assert.equal((await moge.patch("/teams/pl", { weeklyNote: "" }, 200)).body.weeklyNote, null);
+  });
+});
+
+describe("sign-in throttling", () => {
+  test("after 5 failures the email is locked for a while, even with the right password", async () => {
+    const attempt = (password) => request("POST", "/auth/login", { body: { email: "throttle@flow.test", password } });
+    for (let i = 0; i < 5; i++) assert.equal((await attempt("nope")).status, 401);
+    assert.equal((await attempt("nope")).status, 429);
+    // Other accounts are unaffected.
+    assert.equal((await request("POST", "/auth/login", { body: { email: "fer@flow.test", password: PASSWORD } })).status, 200);
+  });
+});
+
+describe("live dates", () => {
+  test("the seeded demo is anchored to today", async () => {
+    const cycle = await moge.get("/cycles/active?teamId=pl");
+    const now = Date.now();
+    assert.ok(Date.parse(cycle.startsAt) <= now && now <= Date.parse(cycle.endsAt), "the seeded cycle is running now");
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City" }).format(new Date());
+    assert.ok((await moge.get("/tasks?teamId=pl")).some((task) => task.dueDate === today), "some tasks are due today");
   });
 });

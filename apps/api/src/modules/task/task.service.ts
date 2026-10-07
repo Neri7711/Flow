@@ -7,7 +7,7 @@ import { now } from "@/shared/clock";
 
 import { recordActivity } from "../activity/activity.recorder";
 
-import type { CreateTaskDto, TaskQueryDto } from "./dto";
+import type { CreateTaskDto, TaskQueryDto, UpdateTaskDto } from "./dto";
 
 const include = {
   blockedBy: { select: { blockerId: true } },
@@ -52,6 +52,56 @@ export class TaskService {
   /** Creates a task with the next per-team identifier (PL-56 -> PL-57) and returns it. */
   create(input: CreateTaskDto, actorId: string): Promise<TaskDto> {
     return this.prisma.$transaction((tx) => createTask(tx, input, actorId));
+  }
+
+  /** Edits a task's fields; `blockedByIds` replaces its dependencies (no self-blocks, no cycles). */
+  async update(id: string, input: UpdateTaskDto): Promise<TaskDto> {
+    await this.getSummary(id);
+    const blockers = input.blockedByIds ? [...new Set(input.blockedByIds)] : undefined;
+    if (blockers) await this.assertNoCycle(id, blockers);
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.task.update({
+        where: { id },
+        data: {
+          title: input.title?.trim(),
+          // `undefined` keeps a column; `null` clears it.
+          description: input.description === undefined ? undefined : input.description?.trim() || null,
+          assigneeId: input.assigneeId,
+          priority: input.priority,
+          labelId: input.labelId,
+          dueDate: input.dueDate,
+          cycleId: input.cycleId,
+        },
+      });
+      if (blockers) {
+        await tx.taskDependency.deleteMany({ where: { taskId: id } });
+        if (blockers.length) await tx.taskDependency.createMany({ data: blockers.map((blockerId) => ({ taskId: id, blockerId })) });
+      }
+      return toDto(await tx.task.findUniqueOrThrow({ where: { id }, include }));
+    });
+  }
+
+  async remove(id: string): Promise<{ id: string }> {
+    // History, dependencies and backlinks cascade with the task.
+    const deleted = await this.prisma.task.deleteMany({ where: { id } });
+    if (deleted.count === 0) throw new NotFoundException(`Task "${id}" not found`);
+    return { id };
+  }
+
+  /** A task can't wait on itself or on anything it (directly or indirectly) blocks. */
+  private async assertNoCycle(id: string, blockers: string[]): Promise<void> {
+    if (blockers.includes(id)) throw new BadRequestException("Una tarea no puede bloquearse a sí misma");
+    const downstream = await this.prisma.$queryRaw<{ id: string }[]>`
+      WITH RECURSIVE downstream AS (
+        SELECT "taskId" AS id FROM "TaskDependency" WHERE "blockerId" = ${id}
+        UNION
+        SELECT d."taskId" FROM "TaskDependency" d JOIN downstream s ON d."blockerId" = s.id
+      )
+      SELECT id FROM downstream`;
+    const blocked = new Set(downstream.map((row) => row.id));
+    const loop = blockers.find((blocker) => blocked.has(blocker));
+    if (loop) throw new BadRequestException(`${loop} ya depende de ${id}: se formaría un ciclo`);
   }
 
   /** Changes the status and records it in the task's activity as `actorId`. */

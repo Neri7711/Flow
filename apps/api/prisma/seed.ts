@@ -23,12 +23,27 @@ const prisma = new PrismaClient();
 /** Every seeded user signs in with this password (development data only). */
 const SEED_PASSWORD = process.env.SEED_PASSWORD;
 
-const TODAY = "2026-09-30";
-const at = (iso: string) => new Date(iso);
+/**
+ * The fixtures were written for "now" = 30 Sep 2026, 09:30 in Mexico City. The seed moves them
+ * to the moment it runs, so the demo always looks current:
+ * - calendar things (events, cycle, milestones, due dates) keep their weekday-relative day and
+ *   wall time, shifted by whole days (Mexico City has no DST);
+ * - log things (activity, comments, history, edits) keep their age ("hace 20 min").
+ */
+const FIXTURE_NOW = new Date("2026-09-30T09:30:00-06:00");
+const SEED_NOW = new Date();
+const DAY_MS = 24 * 60 * 60 * 1000;
+const dayKey = (date: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City" }).format(date);
+const DAY_SHIFT = Math.round((Date.parse(dayKey(SEED_NOW)) - Date.parse(dayKey(FIXTURE_NOW))) / DAY_MS);
+
+const on = (iso: string) => new Date(Date.parse(iso) + DAY_SHIFT * DAY_MS);
+const ago = (iso: string) => new Date(SEED_NOW.getTime() - (FIXTURE_NOW.getTime() - Date.parse(iso)));
+/** "Today" of the fixtures (due dates), as a calendar day in Mexico City. */
+const TODAY = dayKey(on("2026-09-30T12:00:00-06:00"));
 
 const TEAMS = [
   { id: "cs", name: "Computer Science", abbreviation: "CS", mascotAlt: "Pantera de Computer Science" },
-  { id: "pl", name: "Play", abbreviation: "PL", mascotAlt: "Pantera de Play" },
+  { id: "pl", name: "Play", abbreviation: "PL", mascotAlt: "Pantera de Play", weeklyNote: "Esta semana arranca la game jam de otoño." },
   { id: "me", name: "Mechanics", abbreviation: "ME", mascotAlt: "Pantera de Mechanics" },
   { id: "ii", name: "IISE", abbreviation: "II", mascotAlt: "Pantera de IISE" },
 ];
@@ -68,39 +83,39 @@ npm run dev</code></pre>
 
 // Sidebar order, parent-first.
 const DOCUMENTS: Prisma.DocumentCreateManyInput[] = [
-  { id: "pl-roadmap", teamId: "pl", title: "Roadmap del semestre", parentId: null, updatedAt: at("2026-09-25T12:00:00-06:00"), updatedById: "u-moge" },
-  { id: "pl-game-jam", teamId: "pl", title: "Game jam de otoño", parentId: null, updatedAt: at("2026-09-26T18:00:00-06:00"), updatedById: "u-moge" },
-  { id: "pl-ideas", teamId: "pl", title: "Ideas y pitches", parentId: "pl-game-jam", updatedAt: at("2026-09-30T07:30:00-06:00"), updatedById: "u-fer" },
-  { id: "pl-roles", teamId: "pl", title: "Equipos y roles", parentId: "pl-game-jam", updatedAt: at("2026-09-26T10:00:00-06:00"), updatedById: "u-moge" },
-  { id: "pl-deliverables", teamId: "pl", title: "Entregables", parentId: "pl-game-jam", updatedAt: at("2026-09-24T10:00:00-06:00"), updatedById: "u-nico" },
-  { id: "pl-jam-rules", teamId: "pl", title: "Reglas de la game jam", parentId: "pl-deliverables", updatedAt: at("2026-09-29T20:00:00-06:00"), updatedById: "u-moge" },
-  { id: "pl-minutes", teamId: "pl", title: "Minutas semanales", parentId: null, updatedAt: at("2026-09-22T19:00:00-06:00"), updatedById: "u-nico" },
-  { id: "pl-minute-0929", teamId: "pl", title: "Minuta · 29 sep", parentId: "pl-minutes", updatedAt: at("2026-09-29T19:00:00-06:00"), updatedById: "u-nico" },
-  { id: "pl-wiki", teamId: "pl", title: "Wiki del equipo", parentId: null, updatedAt: at("2026-09-20T10:00:00-06:00"), updatedById: "u-ana" },
-  { id: "pl-art-guide", teamId: "pl", title: "Guía de estilo de arte", parentId: "pl-wiki", updatedAt: at("2026-09-27T11:00:00-06:00"), updatedById: "u-ana" },
-  { id: "cs-sprints", teamId: "cs", title: "Sprints", parentId: null, updatedAt: at("2026-09-28T10:00:00-06:00"), updatedById: "u-ana" },
-  { id: "cs-wiki", teamId: "cs", title: "Wiki del equipo", parentId: null, updatedAt: at("2026-09-22T10:00:00-06:00"), updatedById: "u-ana" },
+  { id: "pl-roadmap", teamId: "pl", title: "Roadmap del semestre", parentId: null, updatedAt: ago("2026-09-25T12:00:00-06:00"), updatedById: "u-moge" },
+  { id: "pl-game-jam", teamId: "pl", title: "Game jam de otoño", parentId: null, updatedAt: ago("2026-09-26T18:00:00-06:00"), updatedById: "u-moge" },
+  { id: "pl-ideas", teamId: "pl", title: "Ideas y pitches", parentId: "pl-game-jam", updatedAt: ago("2026-09-30T07:30:00-06:00"), updatedById: "u-fer" },
+  { id: "pl-roles", teamId: "pl", title: "Equipos y roles", parentId: "pl-game-jam", updatedAt: ago("2026-09-26T10:00:00-06:00"), updatedById: "u-moge" },
+  { id: "pl-deliverables", teamId: "pl", title: "Entregables", parentId: "pl-game-jam", updatedAt: ago("2026-09-24T10:00:00-06:00"), updatedById: "u-nico" },
+  { id: "pl-jam-rules", teamId: "pl", title: "Reglas de la game jam", parentId: "pl-deliverables", updatedAt: ago("2026-09-29T20:00:00-06:00"), updatedById: "u-moge" },
+  { id: "pl-minutes", teamId: "pl", title: "Minutas semanales", parentId: null, updatedAt: ago("2026-09-22T19:00:00-06:00"), updatedById: "u-nico" },
+  { id: "pl-minute-0929", teamId: "pl", title: "Minuta · 29 sep", parentId: "pl-minutes", updatedAt: ago("2026-09-29T19:00:00-06:00"), updatedById: "u-nico" },
+  { id: "pl-wiki", teamId: "pl", title: "Wiki del equipo", parentId: null, updatedAt: ago("2026-09-20T10:00:00-06:00"), updatedById: "u-ana" },
+  { id: "pl-art-guide", teamId: "pl", title: "Guía de estilo de arte", parentId: "pl-wiki", updatedAt: ago("2026-09-27T11:00:00-06:00"), updatedById: "u-ana" },
+  { id: "cs-sprints", teamId: "cs", title: "Sprints", parentId: null, updatedAt: ago("2026-09-28T10:00:00-06:00"), updatedById: "u-ana" },
+  { id: "cs-wiki", teamId: "cs", title: "Wiki del equipo", parentId: null, updatedAt: ago("2026-09-22T10:00:00-06:00"), updatedById: "u-ana" },
   {
     id: "cs-onboarding",
     teamId: "cs",
     title: "Onboarding para nuevos integrantes",
     parentId: "cs-wiki",
-    updatedAt: at("2026-09-30T09:25:00-06:00"),
+    updatedAt: ago("2026-09-30T09:25:00-06:00"),
     updatedById: "u-ana",
     content: CS_ONBOARDING_CONTENT,
     propStatus: "En revisión",
     propOwnerId: "u-ana",
     propTags: ["guía", "primer semestre"],
   },
-  { id: "cs-backend", teamId: "cs", title: "Arquitectura del backend", parentId: "cs-wiki", updatedAt: at("2026-09-21T10:00:00-06:00"), updatedById: "u-ana" },
-  { id: "cs-sprite-import", teamId: "cs", title: "Importar sprites al motor", parentId: "cs-wiki", updatedAt: at("2026-09-23T10:00:00-06:00"), updatedById: "u-ana" },
-  { id: "cs-conventions", teamId: "cs", title: "Convenciones de código", parentId: "cs-wiki", updatedAt: at("2026-09-19T10:00:00-06:00"), updatedById: "u-ana" },
-  { id: "cs-minutes", teamId: "cs", title: "Minutas", parentId: null, updatedAt: at("2026-09-29T10:00:00-06:00"), updatedById: "u-nico" },
-  { id: "cs-resources", teamId: "cs", title: "Recursos", parentId: null, updatedAt: at("2026-09-10T10:00:00-06:00"), updatedById: "u-ana" },
-  { id: "me-wiki", teamId: "me", title: "Wiki del equipo", parentId: null, updatedAt: at("2026-09-18T10:00:00-06:00"), updatedById: "u-nico" },
-  { id: "me-minutes", teamId: "me", title: "Minutas", parentId: null, updatedAt: at("2026-09-26T10:00:00-06:00"), updatedById: "u-nico" },
-  { id: "ii-wiki", teamId: "ii", title: "Wiki del equipo", parentId: null, updatedAt: at("2026-09-18T10:00:00-06:00"), updatedById: "u-fer" },
-  { id: "ii-minutes", teamId: "ii", title: "Minutas", parentId: null, updatedAt: at("2026-09-26T10:00:00-06:00"), updatedById: "u-fer" },
+  { id: "cs-backend", teamId: "cs", title: "Arquitectura del backend", parentId: "cs-wiki", updatedAt: ago("2026-09-21T10:00:00-06:00"), updatedById: "u-ana" },
+  { id: "cs-sprite-import", teamId: "cs", title: "Importar sprites al motor", parentId: "cs-wiki", updatedAt: ago("2026-09-23T10:00:00-06:00"), updatedById: "u-ana" },
+  { id: "cs-conventions", teamId: "cs", title: "Convenciones de código", parentId: "cs-wiki", updatedAt: ago("2026-09-19T10:00:00-06:00"), updatedById: "u-ana" },
+  { id: "cs-minutes", teamId: "cs", title: "Minutas", parentId: null, updatedAt: ago("2026-09-29T10:00:00-06:00"), updatedById: "u-nico" },
+  { id: "cs-resources", teamId: "cs", title: "Recursos", parentId: null, updatedAt: ago("2026-09-10T10:00:00-06:00"), updatedById: "u-ana" },
+  { id: "me-wiki", teamId: "me", title: "Wiki del equipo", parentId: null, updatedAt: ago("2026-09-18T10:00:00-06:00"), updatedById: "u-nico" },
+  { id: "me-minutes", teamId: "me", title: "Minutas", parentId: null, updatedAt: ago("2026-09-26T10:00:00-06:00"), updatedById: "u-nico" },
+  { id: "ii-wiki", teamId: "ii", title: "Wiki del equipo", parentId: null, updatedAt: ago("2026-09-18T10:00:00-06:00"), updatedById: "u-fer" },
+  { id: "ii-minutes", teamId: "ii", title: "Minutas", parentId: null, updatedAt: ago("2026-09-26T10:00:00-06:00"), updatedById: "u-fer" },
 ];
 
 const TASKS: Prisma.TaskCreateManyInput[] = [
@@ -162,7 +177,7 @@ async function main() {
   await prisma.taskLabel.createMany({ data: LABELS });
 
   await prisma.cycle.create({
-    data: { id: "pl-c4", teamId: "pl", number: 4, startsAt: at("2026-09-29T00:00:00-06:00"), endsAt: at("2026-10-12T23:59:00-06:00") },
+    data: { id: "pl-c4", teamId: "pl", number: 4, startsAt: on("2026-09-29T00:00:00-06:00"), endsAt: on("2026-10-12T23:59:00-06:00") },
   });
 
   await prisma.project.create({
@@ -172,9 +187,9 @@ async function main() {
       name: "Game jam de otoño",
       milestones: {
         create: [
-          { id: "kickoff", name: "Kickoff", date: at("2026-10-02T00:00:00-06:00") },
-          { id: "playtest", name: "Playtest", date: at("2026-10-07T00:00:00-06:00") },
-          { id: "delivery", name: "Entrega", date: at("2026-10-10T00:00:00-06:00") },
+          { id: "kickoff", name: "Kickoff", date: on("2026-10-02T00:00:00-06:00") },
+          { id: "playtest", name: "Playtest", date: on("2026-10-07T00:00:00-06:00") },
+          { id: "delivery", name: "Entrega", date: on("2026-10-10T00:00:00-06:00") },
         ],
       },
       areas: {
@@ -190,7 +205,7 @@ async function main() {
 
   await prisma.document.createMany({ data: DOCUMENTS });
   await prisma.documentComment.createMany({
-    data: [{ id: "dc-1", documentId: "cs-onboarding", authorId: "u-nico", body: "¿Agregamos aquí el link al canal de dudas?", at: at("2026-09-30T08:30:00-06:00") }],
+    data: [{ id: "dc-1", documentId: "cs-onboarding", authorId: "u-nico", body: "¿Agregamos aquí el link al canal de dudas?", at: ago("2026-09-30T08:30:00-06:00") }],
   });
 
   await prisma.task.createMany({ data: TASKS });
@@ -203,32 +218,32 @@ async function main() {
   await prisma.documentTaskMention.createMany({ data: [{ documentId: "pl-jam-rules", taskId: "PL-42" }] });
   await prisma.taskEvent.createMany({
     data: [
-      { id: "te-1", taskId: "PL-42", kind: "status", actorId: "u-moge", status: "in_progress", at: at("2026-09-30T07:30:00-06:00") },
-      { id: "te-2", taskId: "PL-42", kind: "comment", actorId: "u-ana", body: "Cuando quede el salto aviso para empezar PL-47", at: at("2026-09-30T08:50:00-06:00") },
+      { id: "te-1", taskId: "PL-42", kind: "status", actorId: "u-moge", status: "in_progress", at: ago("2026-09-30T07:30:00-06:00") },
+      { id: "te-2", taskId: "PL-42", kind: "comment", actorId: "u-ana", body: "Cuando quede el salto aviso para empezar PL-47", at: ago("2026-09-30T08:50:00-06:00") },
     ],
   });
 
   await prisma.calendarEvent.createMany({
     data: [
-      { id: "ev-kickoff", teamId: "pl", title: "Kickoff game jam", startsAt: at("2026-10-02T17:00:00-06:00"), endsAt: at("2026-10-02T18:30:00-06:00"), tone: "pl" },
-      { id: "ev-playtest", teamId: "pl", title: "Playtest interno", startsAt: at("2026-10-07T16:00:00-06:00"), endsAt: at("2026-10-07T17:00:00-06:00"), tone: "cs" },
-      { id: "ev-builds", teamId: "pl", title: "Entrega de builds", startsAt: at("2026-10-10T00:00:00-06:00"), endsAt: null, tone: "ii" },
-      { id: "ev-cs-review", teamId: "cs", title: "Revisión de arquitectura", startsAt: at("2026-10-03T12:00:00-06:00"), endsAt: at("2026-10-03T13:00:00-06:00"), tone: "cs" },
+      { id: "ev-kickoff", teamId: "pl", title: "Kickoff game jam", startsAt: on("2026-10-02T17:00:00-06:00"), endsAt: on("2026-10-02T18:30:00-06:00"), tone: "pl" },
+      { id: "ev-playtest", teamId: "pl", title: "Playtest interno", startsAt: on("2026-10-07T16:00:00-06:00"), endsAt: on("2026-10-07T17:00:00-06:00"), tone: "cs" },
+      { id: "ev-builds", teamId: "pl", title: "Entrega de builds", startsAt: on("2026-10-10T00:00:00-06:00"), endsAt: null, tone: "ii" },
+      { id: "ev-cs-review", teamId: "cs", title: "Revisión de arquitectura", startsAt: on("2026-10-03T12:00:00-06:00"), endsAt: on("2026-10-03T13:00:00-06:00"), tone: "cs" },
     ],
   });
 
   await prisma.activity.createMany({
     data: [
-      { id: "act-1", teamId: "pl", actorId: "u-ana", summary: "comentó en Guía de estilo de arte", at: at("2026-09-30T09:10:00-06:00") },
-      { id: "act-2", teamId: "pl", actorId: "u-fer", summary: "completó 2 tareas", at: at("2026-09-30T08:30:00-06:00") },
-      { id: "act-3", teamId: "pl", actorId: "u-nico", summary: "agregó Playtest interno al calendario", at: at("2026-09-30T06:30:00-06:00") },
+      { id: "act-1", teamId: "pl", actorId: "u-ana", summary: "comentó en Guía de estilo de arte", at: ago("2026-09-30T09:10:00-06:00") },
+      { id: "act-2", teamId: "pl", actorId: "u-fer", summary: "completó 2 tareas", at: ago("2026-09-30T08:30:00-06:00") },
+      { id: "act-3", teamId: "pl", actorId: "u-nico", summary: "agregó Playtest interno al calendario", at: ago("2026-09-30T06:30:00-06:00") },
     ],
   });
 
   await prisma.triageRequest.createMany({
     data: [
-      { id: "tr-1", fromTeamId: "me", toTeamId: "pl", title: "Medidas del control para el stand", requesterId: null, createdAt: at("2026-09-30T08:00:00-06:00") },
-      { id: "tr-2", fromTeamId: "me", toTeamId: "pl", title: "Validar sprites del robot", requesterId: null, createdAt: at("2026-09-30T08:20:00-06:00") },
+      { id: "tr-1", fromTeamId: "me", toTeamId: "pl", title: "Medidas del control para el stand", requesterId: null, createdAt: ago("2026-09-30T08:00:00-06:00") },
+      { id: "tr-2", fromTeamId: "me", toTeamId: "pl", title: "Validar sprites del robot", requesterId: null, createdAt: ago("2026-09-30T08:20:00-06:00") },
     ],
   });
 
