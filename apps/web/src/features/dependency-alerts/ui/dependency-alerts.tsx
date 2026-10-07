@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-import { type Task, type TaskStatus, useTaskStore } from "@/entities/task";
+import { type Task, type TaskStatus, useTaskStoreApi } from "@/entities/task";
 import { type Team, TeamAvatar } from "@/entities/team";
 import { toast } from "@/shared/lib/toast";
 
@@ -22,6 +22,8 @@ type DependencyAlertsProps = {
 const announcedTeams = new Set<string>();
 
 export function DependencyAlerts({ teamId, teams }: DependencyAlertsProps) {
+  const taskStore = useTaskStoreApi();
+
   useEffect(() => {
     const announce = (blocker: Task, blocked: readonly Task[]) => {
       const phrase = UNBLOCKING[blocker.status];
@@ -46,19 +48,21 @@ export function DependencyAlerts({ teamId, teams }: DependencyAlertsProps) {
     // Dependencies already unblocking when the space opens (once per session).
     if (!announcedTeams.has(teamId)) {
       announcedTeams.add(teamId);
-      const { tasks } = useTaskStore.getState();
+      const { tasks } = taskStore.getState();
       for (const blocker of Object.values(tasks)) {
         if (blocker.status === "in_review") announce(blocker, blockedBy(tasks, blocker.id));
       }
     }
 
     // Live changes made anywhere in the app.
-    return useTaskStore.subscribe((state, previous) => {
+    return taskStore.subscribe((state, previous) => {
       for (const task of Object.values(state.tasks)) {
-        if (previous.tasks[task.id]?.status !== task.status) announce(task, blockedBy(state.tasks, task.id));
+        const before = previous.tasks[task.id];
+        // Tasks reloaded from the server (`before` missing) are not changes worth announcing.
+        if (before && before.status !== task.status) announce(task, blockedBy(state.tasks, task.id));
       }
     });
-  }, [teamId, teams]);
+  }, [taskStore, teamId, teams]);
 
   return null;
 }

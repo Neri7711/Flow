@@ -1,14 +1,9 @@
 import type { Metadata } from "next";
 
-import { getDocument, getTeamDocuments } from "@/entities/document";
+import { getDocument } from "@/entities/document";
 import { DocumentPage } from "@/pages/document";
 
-export const dynamicParams = false;
-
-export async function generateStaticParams({ params }: { params: { team: string } }) {
-  const documents = await getTeamDocuments(params.team);
-  return documents.map((doc) => ({ docId: doc.id }));
-}
+// Pages are created at runtime, so they render on demand (unknown ids 404 in `DocumentPage`).
 
 export async function generateMetadata({ params }: PageProps<"/[team]/docs/[docId]">): Promise<Metadata> {
   const document = await getDocument((await params).docId);

@@ -40,8 +40,18 @@ function TaskMentionView({ node }: NodeViewProps) {
 /** Typing an existing identifier followed by a space ("CS-17 ") turns it into a pill. */
 const TASK_ID_AT_END = /\b([A-Z]{2}-\d+)\s$/;
 
-export const TaskMention = Node.create({
+type TaskMentionOptions = {
+  /** Whether a task with this identifier exists (only those become pills). */
+  hasTask: (id: string) => boolean;
+};
+
+export const TaskMention = Node.create<TaskMentionOptions>({
   name: "taskMention",
+
+  addOptions() {
+    return { hasTask: () => false };
+  },
+
   group: "inline",
   inline: true,
   atom: true,
@@ -75,7 +85,7 @@ export const TaskMention = Node.create({
         find: TASK_ID_AT_END,
         handler: ({ state, range, match }) => {
           const id = match[1];
-          if (!useTaskStore.getState().tasks[id]) return null;
+          if (!this.options.hasTask(id)) return null;
 
           const start = range.from + match[0].indexOf(id);
           state.tr.replaceWith(start, range.to, [this.type.create({ id }), state.schema.text(" ")]);

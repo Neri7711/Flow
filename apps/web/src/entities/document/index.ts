@@ -7,4 +7,5 @@ export {
   getDocumentContent,
   getRecentDocuments,
   getTeamDocuments,
+  saveDocumentContent,
 } from "./api/document-api";

@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { ChartNoAxesColumnIncreasing, Ellipsis, File, Link as LinkIcon, X } from "lucide-react";
 import { motion } from "motion/react";
@@ -46,6 +46,11 @@ export function TaskDetailPanel({ task, directory, onClose }: TaskDetailPanelPro
   const setStatus = useTaskStore((state) => state.setStatus);
   const allTasks = useTaskStore((state) => state.tasks);
   const events = useTaskStore(useShallow((state) => state.events.filter((event) => event.taskId === task.id)));
+  const loadEvents = useTaskStore((state) => state.loadEvents);
+
+  useEffect(() => {
+    void loadEvents(task.id);
+  }, [loadEvents, task.id]);
 
   const assignee = findById(directory.users, task.assigneeId);
   const taskCycle = cycle && task.cycleId === cycle.id ? cycle : undefined;

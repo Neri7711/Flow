@@ -1,12 +1,30 @@
-import type { Task, TaskLabel } from "../model/types";
-import { TASK_LABELS, TASKS } from "./fixtures";
+"use server";
 
-// Static data for now. Async on purpose: same signature the backend-backed version will have.
+import { api, segment } from "@/shared/api";
+
+import type { NewTask, Task, TaskEvent, TaskLabel, TaskStatus } from "../model/types";
 
 export async function getTasks(): Promise<readonly Task[]> {
-  return TASKS;
+  return api.get<Task[]>("/tasks");
 }
 
 export async function getTaskLabels(): Promise<readonly TaskLabel[]> {
-  return TASK_LABELS;
+  return api.get<TaskLabel[]>("/task-labels");
+}
+
+export async function getTaskEvents(taskId: string): Promise<readonly TaskEvent[]> {
+  return api.get<TaskEvent[]>(`/tasks/${segment(taskId)}/events`);
+}
+
+/** The API assigns the next per-team identifier (PL-57) and returns the created task. */
+export async function createTask({ teamId, title, status, assigneeId, cycleId, sourceDocumentId }: NewTask): Promise<Task> {
+  return api.post<Task>("/tasks", { teamId, title, status, assigneeId: assigneeId ?? undefined, cycleId, sourceDocumentId });
+}
+
+export async function updateTaskStatus(id: string, status: TaskStatus, actorId?: string): Promise<Task> {
+  return api.patch<Task>(`/tasks/${segment(id)}/status`, { status, actorId });
+}
+
+export async function addTaskComment(taskId: string, actorId: string, body: string): Promise<TaskEvent> {
+  return api.post<TaskEvent>(`/tasks/${segment(taskId)}/comments`, { actorId, body });
 }

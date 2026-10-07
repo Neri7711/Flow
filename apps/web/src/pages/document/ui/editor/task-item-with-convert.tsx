@@ -40,7 +40,7 @@ function TaskItemView({ node, updateAttributes, getPos, editor, extension }: Nod
     if (linkedId) toggleDone(linkedId);
   };
 
-  const convert = () => {
+  const convert = async () => {
     const position = getPos();
     if (!team || !title || typeof position !== "number") return;
 
@@ -48,17 +48,29 @@ function TaskItemView({ node, updateAttributes, getPos, editor, extension }: Nod
     const paragraph = (editor.view.nodeDOM(position) as HTMLElement | null)?.querySelector("p");
     const source = paragraph ? measureText(paragraph) : null;
 
-    const id = createTask({
-      teamId: team.id,
-      abbreviation: team.abbreviation,
-      title,
-      status: checked ? "done" : "todo",
-      sourceDocumentId: documentId ?? undefined,
-    });
+    let id: string;
+    try {
+      id = await createTask({
+        teamId: team.id,
+        abbreviation: team.abbreviation,
+        title,
+        status: checked ? "done" : "todo",
+        sourceDocumentId: documentId ?? undefined,
+      });
+    } catch {
+      toast("No se pudo crear la tarea.");
+      return;
+    }
+
+    // The document may have changed while the task was being saved: locate the item again.
+    const current = getPos();
+    const item = typeof current === "number" ? editor.state.doc.nodeAt(current) : null;
+    if (typeof current !== "number" || !item || item.childCount === 0) return;
+
     // The item's text becomes the task: replace the paragraph's content (<li> → <p>, hence +2)
     // with the live pill, which already shows the title.
-    const textStart = position + 2;
-    const textEnd = textStart + node.child(0).content.size;
+    const textStart = current + 2;
+    const textEnd = textStart + item.child(0).content.size;
     editor.chain().insertContentAt({ from: textStart, to: textEnd }, { type: "taskMention", attrs: { id } }).run();
 
     // The pill is a React node view, rendered a frame or two after the transaction.

@@ -4,6 +4,7 @@ import { type FormEvent, useState } from "react";
 
 import { TASK_STATUS_LABEL, TASK_STATUSES, type TaskStatus, TaskStatusIcon, useTaskStore } from "@/entities/task";
 import type { Team } from "@/entities/team";
+import { toast } from "@/shared/lib/toast";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
@@ -39,15 +40,22 @@ function CreateTaskForm({ team, defaultStatus = "todo", defaultTitle = "", cycle
   const createTask = useTaskStore((state) => state.createTask);
   const [title, setTitle] = useState(defaultTitle);
   const [status, setStatus] = useState<TaskStatus>(defaultStatus);
+  const [saving, setSaving] = useState(false);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmed = title.trim();
-    if (!trimmed) return;
+    if (!trimmed || saving) return;
 
-    const id = createTask({ teamId: team.id, abbreviation: team.abbreviation, title: trimmed, status, cycleId });
-    onCreated?.(id);
-    onDone();
+    setSaving(true);
+    try {
+      const id = await createTask({ teamId: team.id, abbreviation: team.abbreviation, title: trimmed, status, cycleId });
+      onCreated?.(id);
+      onDone();
+    } catch {
+      toast("No se pudo crear la tarea. Inténtalo de nuevo.");
+      setSaving(false);
+    }
   };
 
   return (
@@ -95,7 +103,7 @@ function CreateTaskForm({ team, defaultStatus = "todo", defaultTitle = "", cycle
         </div>
       </fieldset>
 
-      <Button type="submit" size="md" disabled={!title.trim()} className="self-end">
+      <Button type="submit" size="md" disabled={!title.trim() || saving} className="self-end">
         Crear tarea
       </Button>
     </form>
