@@ -31,8 +31,8 @@ export class TaskController {
   }
 
   @Post("tasks")
-  create(@Body() body: CreateTaskDto) {
-    return this.tasks.create(body);
+  create(@Body() body: CreateTaskDto, @CurrentUser() user: SessionUser) {
+    return this.tasks.create(body, user.id);
   }
 
   @Patch("tasks/:id/status")

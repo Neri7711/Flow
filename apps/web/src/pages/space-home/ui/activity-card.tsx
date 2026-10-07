@@ -1,4 +1,5 @@
 import type { Activity } from "@/entities/activity";
+import { TaskMentionText } from "@/entities/task";
 import { type User, UserAvatar } from "@/entities/user";
 import { formatRelative } from "@/shared/lib/format-date";
 import { Card, CardTitle } from "@/shared/ui/card";
@@ -24,7 +25,7 @@ export function ActivityCard({ activity, users }: ActivityCardProps) {
             <UserAvatar user={actor} size={28} ring />
             <div className="flex flex-col gap-[3px]">
               <span className="text-sm leading-[1.4]">
-                <b className="font-semibold">{actor.shortName}</b> {item.summary}
+                <b className="font-semibold">{actor.shortName}</b> <TaskMentionText text={item.summary} />
               </span>
               <span className="font-mono text-[10px] tracking-[0.06em] text-ink-muted uppercase">
                 {formatRelative(item.at)}

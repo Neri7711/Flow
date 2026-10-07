@@ -12,6 +12,10 @@ export async function getTaskLabels(): Promise<readonly TaskLabel[]> {
   return api.get<TaskLabel[]>("/task-labels");
 }
 
+export async function getTask(id: string): Promise<Task | undefined> {
+  return api.find<Task>(`/tasks/${segment(id)}`);
+}
+
 export async function getTaskEvents(taskId: string): Promise<readonly TaskEvent[]> {
   return api.get<TaskEvent[]>(`/tasks/${segment(taskId)}/events`);
 }

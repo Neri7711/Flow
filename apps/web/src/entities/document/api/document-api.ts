@@ -31,6 +31,11 @@ export async function getDocumentComments(id: string): Promise<readonly Document
   return api.get<DocumentComment[]>(`/documents/${segment(id)}/comments`);
 }
 
+/** New thread, or a reply when `parentId` is given. The author is the signed-in user. */
+export async function addDocumentComment(documentId: string, body: string, parentId?: string): Promise<DocumentComment> {
+  return api.post<DocumentComment>(`/documents/${segment(documentId)}/comments`, { body, parentId });
+}
+
 /** Persists the editor's HTML (autosave). */
 export async function saveDocumentContent(id: string, content: string): Promise<void> {
   await api.patch(`/documents/${segment(id)}`, { content });

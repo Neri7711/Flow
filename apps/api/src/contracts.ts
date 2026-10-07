@@ -94,6 +94,8 @@ export type DocumentDto = {
 export type DocumentCommentDto = {
   id: string;
   documentId: string;
+  /** null for a thread's first comment. */
+  parentId: string | null;
   authorId: string;
   body: string;
   at: string;

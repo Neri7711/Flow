@@ -46,11 +46,11 @@ export function TaskDetailPanel({ task, directory, onClose }: TaskDetailPanelPro
   const setStatus = useTaskStore((state) => state.setStatus);
   const allTasks = useTaskStore((state) => state.tasks);
   const events = useTaskStore(useShallow((state) => state.events.filter((event) => event.taskId === task.id)));
-  const loadEvents = useTaskStore((state) => state.loadEvents);
+  const loadDetail = useTaskStore((state) => state.loadDetail);
 
   useEffect(() => {
-    void loadEvents(task.id);
-  }, [loadEvents, task.id]);
+    void loadDetail(task.id);
+  }, [loadDetail, task.id]);
 
   const assignee = findById(directory.users, task.assigneeId);
   const taskCycle = cycle && task.cycleId === cycle.id ? cycle : undefined;

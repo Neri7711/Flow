@@ -75,8 +75,8 @@ model User {
   role         UserRole
   teamId       String
   /// Soft team tint for the avatar; null renders the neutral tone.
-  avatarTone String?
-  position   Int      @default(autoincrement())
+  avatarTone   String?
+  position     Int      @default(autoincrement())
 
   team Team @relation(fields: [teamId], references: [id])
 
@@ -153,15 +153,17 @@ model TaskDependency {
 }
 
 model TaskEvent {
-  id      String        @id @default(cuid())
-  taskId  String
-  kind    TaskEventKind
-  actorId String
+  id       String        @id @default(cuid())
+  taskId   String
+  kind     TaskEventKind
+  actorId  String
   /// Set when kind = status.
-  status  TaskStatus?
+  status   TaskStatus?
   /// Set when kind = comment.
-  body    String?
-  at      DateTime
+  body     String?
+  at       DateTime
+  /// Tiebreaker for entries with the same `at`.
+  position Int           @default(autoincrement())
 
   task  Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
   actor User @relation(fields: [actorId], references: [id])
@@ -266,17 +268,25 @@ model DocumentTaskMention {
   @@index([taskId])
 }
 
+/// Margin comments. Threads are one level deep: a reply's parent is always a top-level comment.
 model DocumentComment {
   id         String   @id @default(cuid())
   documentId String
+  /// null for a thread's first comment.
+  parentId   String?
   authorId   String
   body       String
   at         DateTime
+  /// Tiebreaker for comments with the same `at`.
+  position   Int      @default(autoincrement())
 
-  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  author   User     @relation(fields: [authorId], references: [id])
+  document Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  author   User              @relation(fields: [authorId], references: [id])
+  parent   DocumentComment?  @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  DocumentComment[] @relation("CommentThread")
 
   @@index([documentId, at])
+  @@index([parentId])
 }
 
 model CalendarEvent {
@@ -295,12 +305,14 @@ model CalendarEvent {
 }
 
 model Activity {
-  id      String   @id
-  teamId  String
-  actorId String
+  id       String   @id @default(cuid())
+  teamId   String
+  actorId  String
   /// What the actor did, rendered after their name.
-  summary String
-  at      DateTime
+  summary  String
+  at       DateTime
+  /// Tiebreaker for entries with the same `at`.
+  position Int      @default(autoincrement())
 
   team  Team @relation(fields: [teamId], references: [id])
   actor User @relation(fields: [actorId], references: [id])

@@ -65,4 +65,9 @@ export class AddDocumentCommentDto {
   @IsString()
   @IsNotEmpty()
   body!: string;
+
+  /** Thread to reply to; omit to start a new thread. */
+  @IsOptional()
+  @IsString()
+  parentId?: string;
 }

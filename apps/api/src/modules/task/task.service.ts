@@ -5,11 +5,13 @@ import type { TaskDto, TaskEventDto, TaskLabelDto, TaskStatus } from "@/contract
 import { PrismaService } from "@/prisma/prisma.service";
 import { now } from "@/shared/clock";
 
+import { recordActivity } from "../activity/activity.recorder";
+
 import type { CreateTaskDto, TaskQueryDto } from "./dto";
 
 const include = {
   blockedBy: { select: { blockerId: true } },
-  mentions: { select: { documentId: true } },
+  mentions: { select: { documentId: true }, orderBy: { documentId: "asc" } },
 } satisfies Prisma.TaskInclude;
 
 type TaskWithRelations = Prisma.TaskGetPayload<{ include: typeof include }>;
@@ -41,14 +43,14 @@ export class TaskService {
   async getEvents(taskId: string): Promise<TaskEventDto[]> {
     const task = await this.prisma.task.findUnique({
       where: { id: taskId },
-      select: { events: { orderBy: { at: "asc" } } },
+      select: { events: { orderBy: [{ at: "asc" }, { position: "asc" }] } },
     });
     if (!task) throw new NotFoundException(`Task "${taskId}" not found`);
     return task.events.map(toEventDto);
   }
 
   /** Creates a task with the next per-team identifier (PL-56 -> PL-57) and returns it. */
-  async create(input: CreateTaskDto): Promise<TaskDto> {
+  async create(input: CreateTaskDto, actorId: string): Promise<TaskDto> {
     return this.prisma.$transaction(async (tx) => {
       // Atomic increment: the row lock serializes concurrent creates for the same team.
       const team = await tx.team
@@ -72,40 +74,44 @@ export class TaskService {
         },
         include,
       });
+      await recordActivity(tx, { teamId: team.id, actorId, summary: `creó ${task.id}` });
       return toDto(task);
     });
   }
 
   /** Changes the status and records it in the task's activity as `actorId`. */
   async setStatus(id: string, status: TaskStatus, actorId: string): Promise<TaskDto> {
-    const current = await this.getStatus(id);
-    return current === status ? this.findOne(id) : this.applyStatus(id, status, actorId);
+    const current = await this.getSummary(id);
+    return current.status === status ? this.findOne(id) : this.applyStatus(id, current.teamId, status, actorId);
   }
 
   /** Checkbox semantics: done <-> todo. */
   async toggleDone(id: string, actorId: string): Promise<TaskDto> {
-    const current = await this.getStatus(id);
-    return this.applyStatus(id, current === "done" ? "todo" : "done", actorId);
+    const current = await this.getSummary(id);
+    return this.applyStatus(id, current.teamId, current.status === "done" ? "todo" : "done", actorId);
   }
 
   async addComment(taskId: string, actorId: string, body: string): Promise<TaskEventDto> {
-    await this.getStatus(taskId);
-    const event = await this.prisma.taskEvent.create({
-      data: { taskId, kind: "comment", actorId, body, at: now() },
-    });
+    const { teamId } = await this.getSummary(taskId);
+    const [event] = await this.prisma.$transaction([
+      this.prisma.taskEvent.create({ data: { taskId, kind: "comment", actorId, body, at: now() } }),
+      recordActivity(this.prisma, { teamId, actorId, summary: `comentó en ${taskId}` }),
+    ]);
     return toEventDto(event);
   }
 
-  private async getStatus(id: string): Promise<TaskStatus> {
-    const task = await this.prisma.task.findUnique({ where: { id }, select: { status: true } });
+  private async getSummary(id: string): Promise<{ status: TaskStatus; teamId: string }> {
+    const task = await this.prisma.task.findUnique({ where: { id }, select: { status: true, teamId: true } });
     if (!task) throw new NotFoundException(`Task "${id}" not found`);
-    return task.status;
+    return task;
   }
 
-  private async applyStatus(id: string, status: TaskStatus, actorId: string): Promise<TaskDto> {
+  /** Updates the status, logs it in the task's history and, when it's completed, in the team feed. */
+  private async applyStatus(id: string, teamId: string, status: TaskStatus, actorId: string): Promise<TaskDto> {
     const [task] = await this.prisma.$transaction([
       this.prisma.task.update({ where: { id }, data: { status }, include }),
       this.prisma.taskEvent.create({ data: { taskId: id, kind: "status", actorId, status, at: now() } }),
+      ...(status === "done" ? [recordActivity(this.prisma, { teamId, actorId, summary: `completó ${id}` })] : []),
     ]);
     return toDto(task);
   }

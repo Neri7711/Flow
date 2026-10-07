@@ -7,7 +7,9 @@ import type { DocumentCommentDto, DocumentDto, DocumentPropertiesDto } from "@/c
 import { PrismaService } from "@/prisma/prisma.service";
 import { now } from "@/shared/clock";
 
+import { recordActivity } from "../activity/activity.recorder";
 import type { AddDocumentCommentDto, CreateDocumentDto, UpdateDocumentDto } from "./dto";
+import { extractTaskMentions } from "./task-mentions";
 
 export type DocumentTreeNode = DocumentDto & { children: DocumentTreeNode[] };
 
@@ -67,7 +69,7 @@ export class DocumentService {
   async getComments(id: string): Promise<DocumentCommentDto[]> {
     const doc = await this.prisma.document.findUnique({
       where: { id },
-      select: { comments: { orderBy: { at: "asc" } } },
+      select: { comments: { orderBy: [{ at: "asc" }, { position: "asc" }] } },
     });
     if (!doc) throw notFound(id);
     return doc.comments.map(toCommentDto);
@@ -76,22 +78,26 @@ export class DocumentService {
   async create(input: CreateDocumentDto, authorId: string): Promise<DocumentDto> {
     if (input.parentId) await this.assertValidParent(input.parentId, input.teamId);
 
-    const doc = await this.prisma.document.create({
-      data: {
-        id: `doc-${randomUUID()}`,
-        teamId: input.teamId,
-        title: input.title,
-        parentId: input.parentId ?? null,
-        updatedById: authorId,
-        updatedAt: now(),
-        content: input.content ?? EMPTY_CONTENT,
-        propStatus: input.properties?.status ?? null,
-        propOwnerId: input.properties?.ownerId ?? null,
-        propTags: input.properties?.tags ?? [],
-      },
-      omit: omitContent,
+    return this.prisma.$transaction(async (tx) => {
+      const doc = await tx.document.create({
+        data: {
+          id: `doc-${randomUUID()}`,
+          teamId: input.teamId,
+          title: input.title,
+          parentId: input.parentId ?? null,
+          updatedById: authorId,
+          updatedAt: now(),
+          content: input.content ?? EMPTY_CONTENT,
+          propStatus: input.properties?.status ?? null,
+          propOwnerId: input.properties?.ownerId ?? null,
+          propTags: input.properties?.tags ?? [],
+        },
+        omit: omitContent,
+      });
+      if (input.content !== undefined) await syncTaskMentions(tx, doc.id, input.content);
+      await recordActivity(tx, { teamId: doc.teamId, actorId: authorId, summary: `creó la página ${doc.title}` });
+      return toDto(doc);
     });
-    return toDto(doc);
   }
 
   async update(id: string, input: UpdateDocumentDto, editorId: string): Promise<DocumentDto> {
@@ -105,22 +111,25 @@ export class DocumentService {
       }
     }
 
-    // `undefined` leaves a column untouched; `null` clears it.
-    const doc = await this.prisma.document.update({
-      where: { id },
-      data: {
-        title: input.title,
-        content: input.content,
-        parentId: input.parentId,
-        updatedById: editorId,
-        updatedAt: now(),
-        propStatus: input.properties?.status,
-        propOwnerId: input.properties?.ownerId,
-        propTags: input.properties?.tags,
-      },
-      omit: omitContent,
+    return this.prisma.$transaction(async (tx) => {
+      // `undefined` leaves a column untouched; `null` clears it.
+      const doc = await tx.document.update({
+        where: { id },
+        data: {
+          title: input.title,
+          content: input.content,
+          parentId: input.parentId,
+          updatedById: editorId,
+          updatedAt: now(),
+          propStatus: input.properties?.status,
+          propOwnerId: input.properties?.ownerId,
+          propTags: input.properties?.tags,
+        },
+        omit: omitContent,
+      });
+      if (input.content !== undefined) await syncTaskMentions(tx, id, input.content);
+      return toDto(doc);
     });
-    return toDto(doc);
   }
 
   /** Deletes a page and its whole subtree (Notion semantics; the FK cascades). */
@@ -133,13 +142,28 @@ export class DocumentService {
     });
   }
 
-  async addComment(id: string, input: AddDocumentCommentDto, authorId: string): Promise<DocumentCommentDto> {
-    const exists = await this.prisma.document.count({ where: { id } });
-    if (!exists) throw notFound(id);
+  /** A new thread, or a reply when `parentId` points at a thread of this same page. */
+  async addComment(id: string, { body, parentId }: AddDocumentCommentDto, authorId: string): Promise<DocumentCommentDto> {
+    const doc = await this.prisma.document.findUnique({ where: { id }, select: { teamId: true, title: true } });
+    if (!doc) throw notFound(id);
 
-    const comment = await this.prisma.documentComment.create({
-      data: { documentId: id, authorId, body: input.body, at: now() },
-    });
+    if (parentId) {
+      const parent = await this.prisma.documentComment.findUnique({
+        where: { id: parentId },
+        select: { documentId: true, parentId: true },
+      });
+      if (!parent || parent.documentId !== id) throw new BadRequestException("The thread doesn't belong to this page");
+      if (parent.parentId) throw new BadRequestException("Reply to the thread, not to another reply");
+    }
+
+    const [comment] = await this.prisma.$transaction([
+      this.prisma.documentComment.create({ data: { documentId: id, parentId: parentId ?? null, authorId, body, at: now() } }),
+      recordActivity(this.prisma, {
+        teamId: doc.teamId,
+        actorId: authorId,
+        summary: `${parentId ? "respondió" : "comentó"} en ${doc.title}`,
+      }),
+    ]);
     return toCommentDto(comment);
   }
 
@@ -159,6 +183,16 @@ export class DocumentService {
       )
       SELECT id FROM subtree`;
     return rows.map((row) => row.id);
+  }
+}
+
+/** Rebuilds the page's task backlinks from the pills in its HTML (unknown ids are ignored). */
+async function syncTaskMentions(tx: Prisma.TransactionClient, documentId: string, html: string): Promise<void> {
+  const ids = extractTaskMentions(html);
+  const tasks = ids.length ? await tx.task.findMany({ where: { id: { in: ids } }, select: { id: true } }) : [];
+  await tx.documentTaskMention.deleteMany({ where: { documentId } });
+  if (tasks.length) {
+    await tx.documentTaskMention.createMany({ data: tasks.map(({ id }) => ({ documentId, taskId: id })) });
   }
 }
 
@@ -190,6 +224,7 @@ function toCommentDto(comment: DocumentComment): DocumentCommentDto {
   return {
     id: comment.id,
     documentId: comment.documentId,
+    parentId: comment.parentId,
     authorId: comment.authorId,
     body: comment.body,
     at: comment.at.toISOString(),

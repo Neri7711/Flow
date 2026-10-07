@@ -12,7 +12,7 @@ export class ActivityService {
   async findRecent(teamId: string, limit = 3): Promise<ActivityDto[]> {
     const items = await this.prisma.activity.findMany({
       where: { teamId },
-      orderBy: { at: "desc" },
+      orderBy: [{ at: "desc" }, { position: "desc" }],
       take: limit,
     });
     return items.map(toDto);

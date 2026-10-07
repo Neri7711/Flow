@@ -59,7 +59,7 @@ export async function DocumentPage({ teamId, documentId }: DocumentPageProps) {
           <DocumentEditor documentId={document.id} team={team} content={content} />
         </article>
         <aside className="hidden pt-[470px] xl:block">
-          <DocumentComments comments={comments} users={users} currentUser={currentUser} />
+          <DocumentComments documentId={document.id} comments={comments} users={users} />
         </aside>
       </div>
     </>

@@ -191,6 +191,76 @@ describe("tasks", () => {
   });
 });
 
+describe("comment threads", () => {
+  test("replies hang from their thread; the author comes from the session", async () => {
+    const { body: reply } = await ana.post("/documents/cs-onboarding/comments", { body: "Sí, buena idea", parentId: "dc-1" }, 201);
+    assert.equal(reply.parentId, "dc-1");
+    assert.equal(reply.authorId, "u-ana");
+    const comments = await moge.get("/documents/cs-onboarding/comments");
+    assert.deepEqual(
+      comments.map((comment) => [comment.id === reply.id ? "reply" : comment.id, comment.parentId]),
+      [
+        ["dc-1", null],
+        ["reply", "dc-1"],
+      ],
+    );
+  });
+
+  test("threads are one level deep and belong to their page", async () => {
+    const [, reply] = await moge.get("/documents/cs-onboarding/comments");
+    await moge.post("/documents/cs-onboarding/comments", { body: "x", parentId: reply.id }, 400);
+    await moge.post("/documents/pl-roadmap/comments", { body: "x", parentId: "dc-1" }, 400);
+    await moge.post("/documents/cs-onboarding/comments", { body: "x", parentId: "nope" }, 400);
+  });
+});
+
+describe("task mentions (backlinks)", () => {
+  const pill = (id) => `<span data-type="task-mention" data-id="${id}">${id}</span>`;
+
+  test("saving a page links the tasks its pills mention (unknown ids are ignored)", async () => {
+    await moge.patch("/documents/pl-roadmap", { content: `<p>${pill("PL-42")} y ${pill("CS-17")} y ${pill("XX-99")} y otra vez ${pill("PL-42")}</p>` }, 200);
+    assert.deepEqual((await moge.get("/tasks/PL-42")).mentionedInDocumentIds, ["pl-jam-rules", "pl-roadmap"]);
+    assert.deepEqual((await moge.get("/tasks/CS-17")).mentionedInDocumentIds, ["pl-roadmap"]);
+  });
+
+  test("removing a pill removes the backlink", async () => {
+    await moge.patch("/documents/pl-roadmap", { content: `<p>${pill("PL-42")}</p>` }, 200);
+    assert.equal((await moge.get("/tasks/CS-17")).mentionedInDocumentIds, undefined);
+    await moge.patch("/documents/pl-roadmap", { content: "<p>Sin menciones</p>" }, 200);
+    assert.deepEqual((await moge.get("/tasks/PL-42")).mentionedInDocumentIds, ["pl-jam-rules"]);
+  });
+
+  test("editing only the title leaves backlinks alone", async () => {
+    await moge.patch("/documents/pl-jam-rules", { title: "Reglas de la game jam (v2)" }, 200);
+    assert.deepEqual((await moge.get("/tasks/PL-42")).mentionedInDocumentIds, ["pl-jam-rules"]);
+  });
+});
+
+describe("activity feed", () => {
+  const latest = async (teamId, limit) =>
+    (await moge.get(`/activity/recent?teamId=${teamId}&limit=${limit}`)).map((item) => `${item.actorId}: ${item.summary}`);
+
+  test("completing, creating and commenting show up newest first, in order", async () => {
+    await ana.patch("/tasks/PL-55/status", { status: "done" }, 200);
+    await ana.patch("/tasks/PL-55/status", { status: "in_review" }, 200); // not a completion: not in the feed
+    const { body: task } = await moge.post("/tasks", { teamId: "pl", title: "Créditos del juego", status: "todo" }, 201);
+    await ana.post(`/tasks/${task.id}/comments`, { body: "Yo me encargo" }, 201);
+    await moge.post("/documents/pl-roadmap/comments", { body: "Revisar fechas" }, 201);
+    assert.deepEqual(await latest("pl", 4), [
+      "u-moge: comentó en Roadmap del semestre",
+      `u-ana: comentó en ${task.id}`,
+      `u-moge: creó ${task.id}`,
+      "u-ana: completó PL-55",
+    ]);
+  });
+
+  test("entries go to the team that owns the task or page", async () => {
+    await moge.patch("/tasks/CS-17/status", { status: "done" }, 200);
+    assert.deepEqual(await latest("cs", 1), ["u-moge: completó CS-17"]);
+    assert.notEqual((await latest("pl", 1))[0], "u-moge: completó CS-17");
+  });
+});
+
 describe("documents", () => {
   let page;
 

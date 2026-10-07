@@ -24,7 +24,8 @@ export type TaskState = {
   /** Creates the task in the API (which assigns the next per-team id) and returns that id. */
   createTask: (input: NewTask) => Promise<string>;
   addComment: (taskId: string, actorId: string, body: string) => Promise<void>;
-  loadEvents: (taskId: string) => Promise<void>;
+  /** Refreshes a task (backlinks may have changed elsewhere) and loads its activity. */
+  loadDetail: (taskId: string) => Promise<void>;
 };
 
 export type TaskStore = StoreApi<TaskState>;
@@ -94,9 +95,10 @@ export function createTaskStore(initialTasks: readonly Task[]): TaskStore {
         }
       },
 
-      loadEvents: async (taskId) => {
+      loadDetail: async (taskId) => {
         try {
-          const events = await taskApi.getTaskEvents(taskId);
+          const [task, events] = await Promise.all([taskApi.getTask(taskId), taskApi.getTaskEvents(taskId)]);
+          if (task) putTask(task);
           set((state) => ({ events: [...state.events.filter((event) => event.taskId !== taskId), ...events] }));
         } catch {
           // The panel keeps whatever it already shows; the next open retries.
