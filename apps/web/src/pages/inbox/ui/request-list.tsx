@@ -1,94 +1,76 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "motion/react";
 
 import { type Team, TeamAvatar } from "@/entities/team";
-import { acceptTriageRequest, declineTriageRequest, type TriageRequest } from "@/entities/triage";
-import type { User } from "@/entities/user";
-import { routes } from "@/shared/config";
+import type { TriageRequest } from "@/entities/triage";
+import { motionTokens } from "@/shared/config";
 import { formatRelative } from "@/shared/lib/format-date";
-import { toast } from "@/shared/lib/toast";
-import { Button } from "@/shared/ui/button";
+import { cn } from "@/shared/lib/utils";
+import { Eyebrow } from "@/shared/ui/eyebrow";
 
 type RequestListProps = {
+  label: string;
   requests: readonly TriageRequest[];
   teams: readonly Team[];
-  users: readonly User[];
-  /** Only the receiving team's leaders decide. */
-  canDecide: boolean;
-  teamName: string;
+  space: Team;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
 };
 
-export function RequestList({ requests, teams, users, canDecide, teamName }: RequestListProps) {
-  const router = useRouter();
-  const [busyId, setBusyId] = useState<string | null>(null);
+/** "hace 25 min" → "25 MIN": the list only has room for the amount. */
+const shortAge = (iso: string) => formatRelative(iso).replace(/^hace\s+/, "");
 
-  const decide = async (request: TriageRequest, accept: boolean) => {
-    setBusyId(request.id);
-    try {
-      if (accept) {
-        const taskId = await acceptTriageRequest(request.id);
-        toast(
-          <>
-            Se creó{" "}
-            <Link href={`${routes.tasks(request.toTeamId)}?task=${taskId}`} className="font-semibold underline underline-offset-2">
-              {taskId}
-            </Link>{" "}
-            en el tablero.
-          </>,
-        );
-      } else {
-        await declineTriageRequest(request.id);
-        toast(<>Solicitud rechazada.</>);
-      }
-      router.refresh();
-    } catch {
-      toast("No se pudo guardar la decisión. Puede que otro líder ya la haya tomado.");
-      router.refresh();
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  if (requests.length === 0) {
-    return <p className="border-t border-subtle py-3 text-sm text-ink-muted">No hay solicitudes pendientes.</p>;
-  }
-
+/** Pending requests; the selected one opens on the right. Decided ones leave with a short collapse. */
+export function RequestList({ label, requests, teams, space, selectedId, onSelect }: RequestListProps) {
   return (
-    <>
-      {!canDecide && (
-        <p className="border-t border-subtle py-3 text-sm text-ink-muted">Solo los líderes de {teamName} pueden aceptar o rechazar.</p>
-      )}
-      {requests.map((request) => {
-        const from = teams.find((team) => team.id === request.fromTeamId);
-        const requester = users.find((user) => user.id === request.requesterId);
-        const busy = busyId === request.id;
+    <section aria-label={label} className="flex flex-col gap-0.5">
+      <Eyebrow className="px-3 py-1 text-[10px]">{label}</Eyebrow>
 
-        return (
-          <div key={request.id} className="flex items-center gap-3.5 border-t border-subtle py-3">
-            {from && <TeamAvatar team={from} size={36} decorative />}
-            <div className="flex min-w-0 flex-col gap-[3px]">
-              <span className="truncate text-sm font-medium">{request.title}</span>
-              <span className="text-xs text-ink-muted" suppressHydrationWarning>
-                {from?.name ?? "Otro equipo"}
-                {requester && ` · ${requester.shortName}`} · {formatRelative(request.createdAt)}
-              </span>
-            </div>
-            {canDecide && (
-              <div className="ml-auto flex shrink-0 gap-1.5">
-                <Button variant="ghost" disabled={busy} onClick={() => decide(request, false)}>
-                  Rechazar
-                </Button>
-                <Button disabled={busy} onClick={() => decide(request, true)}>
-                  Aceptar
-                </Button>
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </>
+      {requests.length === 0 && <p className="px-3 py-2 text-sm text-ink-muted">Nada pendiente por ahora.</p>}
+
+      <ul className="flex flex-col gap-0.5">
+        <AnimatePresence initial={false}>
+          {requests.map((request) => {
+            const from = teams.find((team) => team.id === request.fromTeamId);
+            const selected = request.id === selectedId;
+
+            return (
+              <motion.li
+                key={request.id}
+                layout="position"
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: motionTokens.duration.fast, ease: motionTokens.ease.out }}
+                className="overflow-hidden"
+              >
+                <button
+                  type="button"
+                  aria-current={selected || undefined}
+                  onClick={() => onSelect(request.id)}
+                  className={cn(
+                    "flex w-full cursor-pointer gap-3 rounded-xl p-3 text-left transition-colors duration-(--motion-press) outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                    selected ? "bg-surface shadow-card ring-1 ring-line" : "hover:bg-surface/50",
+                  )}
+                >
+                  <span aria-hidden="true" data-team={space.id} className="mt-3.5 size-2 shrink-0 rounded-full bg-team" />
+                  {from && <TeamAvatar team={from} size={36} decorative />}
+                  <span className="flex min-w-0 grow flex-col gap-[3px]">
+                    <span className="flex gap-2">
+                      <span className="truncate text-sm font-semibold">
+                        {from?.name ?? "Otro equipo"} pide ayuda a {space.name}
+                      </span>
+                      <span className="ml-auto shrink-0 font-mono text-[10px] text-ink-muted uppercase" suppressHydrationWarning>
+                        {shortAge(request.createdAt)}
+                      </span>
+                    </span>
+                    <span className="truncate text-[13px] text-ink-muted">{request.title}</span>
+                  </span>
+                </button>
+              </motion.li>
+            );
+          })}
+        </AnimatePresence>
+      </ul>
+    </section>
   );
 }

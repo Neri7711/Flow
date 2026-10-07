@@ -14,7 +14,7 @@ import { Eyebrow } from "@/shared/ui/eyebrow";
 const timeRange = (event: CalendarEvent) =>
   event.endsAt ? `${formatTime(event.startsAt)} – ${formatTime(event.endsAt)}` : "Todo el día";
 
-/** Compact entry in a day cell; opens the event's details (and its delete action). */
+/** Entry in a day cell, in its team's colors; opens the event's details (and its delete action). */
 export function EventItem({ event }: { event: CalendarEvent }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -37,12 +37,10 @@ export function EventItem({ event }: { event: CalendarEvent }) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         data-team={event.tone}
-        className="flex w-full cursor-pointer items-center gap-1.5 rounded-md bg-team-soft px-1.5 py-1 text-left text-[12px] leading-tight text-team-ink outline-none hover:brightness-95 focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="flex w-full cursor-pointer flex-col gap-px rounded-md border-l-[3px] border-team bg-team-soft px-[7px] py-1 text-left text-team-strong outline-none hover:brightness-[0.97] focus-visible:ring-3 focus-visible:ring-ring/50"
       >
-        <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-team" />
-        {/* In narrow cells the title matters more; the time is in the details dialog. */}
-        {event.endsAt && <span className="hidden shrink-0 font-mono text-[10px] xl:inline">{formatTime(event.startsAt)}</span>}
-        <span className="truncate">{event.title}</span>
+        <span className="truncate text-xs font-semibold">{event.title}</span>
+        <span className="font-mono text-[10px]">{event.endsAt ? formatTime(event.startsAt) : "Todo el día"}</span>
       </DialogTrigger>
 
       <DialogContent className="sm:max-w-sm">
