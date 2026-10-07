@@ -1,8 +1,8 @@
 "use client";
 
 import { type FormEvent, useState } from "react";
+import { Copy, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { Copy } from "lucide-react";
 
 import { createInvitation, type Invitation, revokeInvitation } from "@/entities/invitation";
 import type { UserRole } from "@/entities/user";
@@ -10,19 +10,21 @@ import { routes } from "@/shared/config";
 import { formatRelative } from "@/shared/lib/format-date";
 import { toast } from "@/shared/lib/toast";
 import { Button } from "@/shared/ui/button";
-import { Card, CardHeader, CardTitle } from "@/shared/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/shared/ui/dialog";
 import { Eyebrow } from "@/shared/ui/eyebrow";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { NativeSelect } from "@/shared/ui/native-select";
 
-/** Leaders: invite someone and share the one-time link; pending invitations can be revoked. */
+/** Leaders open this dialog to create, copy, and revoke one-time invitations. */
 export function InvitePanel({ invitations }: { invitations: readonly Invitation[] }) {
   const router = useRouter();
+  const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<UserRole>("member");
   const [sending, setSending] = useState(false);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   /** The link is only known right after creating the invitation. */
   const [link, setLink] = useState<{ name: string; url: string } | null>(null);
@@ -48,88 +50,119 @@ export function InvitePanel({ invitations }: { invitations: readonly Invitation[
 
   const copyLink = async () => {
     if (!link) return;
-    await navigator.clipboard.writeText(link.url);
-    toast(<>Enlace para <b>{link.name}</b> copiado.</>);
+
+    try {
+      await navigator.clipboard.writeText(link.url);
+      toast(
+        <>
+          Enlace para <b>{link.name}</b> copiado.
+        </>,
+      );
+    } catch {
+      toast("No se pudo copiar el enlace.");
+    }
   };
 
   const revoke = async (invitation: Invitation) => {
+    setRevokingId(invitation.id);
     try {
       await revokeInvitation(invitation.id);
-      toast(<>Invitación de <b>{invitation.name}</b> revocada.</>);
+      toast(
+        <>
+          Invitación de <b>{invitation.name}</b> revocada.
+        </>,
+      );
       router.refresh();
     } catch {
       toast("No se pudo revocar la invitación.");
+    } finally {
+      setRevokingId(null);
     }
   };
 
   return (
-    <Card>
-      <CardTitle className="mb-1">Invitar a alguien</CardTitle>
-      <p className="mb-4 text-sm text-ink-muted">Genera un enlace de un solo uso (vale 7 días) para que elija su contraseña.</p>
-
-      <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="invite-name">Nombre</Label>
-          <Input id="invite-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Sofía Ramírez" />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="invite-email">Correo</Label>
-          <Input
-            id="invite-email"
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="nombre@up.edu.mx"
-          />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="invite-role">Rol</Label>
-          <NativeSelect id="invite-role" value={role} onChange={(event) => setRole(event.target.value as UserRole)}>
-            <option value="member">Miembro</option>
-            <option value="leader">Líder</option>
-          </NativeSelect>
-        </div>
-        <Button type="submit" size="md" className="h-12 self-end" disabled={!name.trim() || !email.trim() || sending}>
-          Crear invitación
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="md">
+          <Plus aria-hidden="true" strokeWidth={1.8} />
+          Invitar
         </Button>
-      </form>
+      </DialogTrigger>
+      <DialogContent className="max-h-[min(720px,calc(100dvh-2rem))] gap-5 overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-bold tracking-display">Invitar a alguien</DialogTitle>
+          <DialogDescription>Genera un enlace de un solo uso (vale 7 días) para que elija su contraseña.</DialogDescription>
+        </DialogHeader>
 
-      {error && (
-        <p role="alert" className="mt-3 text-sm text-ink-muted">
-          {error}
-        </p>
-      )}
-
-      {link && (
-        <div className="mt-4 flex items-center gap-3 rounded-[14px] bg-team-soft py-2.5 pr-2.5 pl-4">
-          <span className="min-w-0 flex-1 truncate font-mono text-xs text-team-ink">{link.url}</span>
-          <Button variant="outline" onClick={copyLink}>
-            <Copy strokeWidth={1.8} />
-            Copiar enlace
+        <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="invite-name">Nombre</Label>
+            <Input id="invite-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Sofía Ramírez" />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="invite-email">Correo</Label>
+            <Input
+              id="invite-email"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="nombre@up.edu.mx"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="invite-role">Rol</Label>
+            <NativeSelect id="invite-role" value={role} onChange={(event) => setRole(event.target.value as UserRole)}>
+              <option value="member">Miembro</option>
+              <option value="leader">Líder</option>
+            </NativeSelect>
+          </div>
+          <Button type="submit" size="md" className="h-12 self-end" disabled={!name.trim() || !email.trim() || sending}>
+            {sending ? "Creando…" : "Crear invitación"}
           </Button>
-        </div>
-      )}
+        </form>
 
-      {invitations.length > 0 && (
-        <section className="mt-5">
-          <CardHeader>
-            <Eyebrow>Pendientes</Eyebrow>
-          </CardHeader>
-          {invitations.map((invitation) => (
-            <div key={invitation.id} className="flex items-center gap-3 border-t border-subtle py-2.5">
-              <div className="flex min-w-0 flex-col gap-[3px]">
-                <span className="text-sm font-medium">{invitation.name}</span>
-                <span className="truncate text-xs text-ink-muted" suppressHydrationWarning>
-                  {invitation.email} · {invitation.role === "leader" ? "Líder" : "Miembro"} · {formatRelative(invitation.createdAt)}
-                </span>
-              </div>
-              <Button variant="ghost" className="ml-auto" onClick={() => revoke(invitation)}>
-                Revocar
-              </Button>
+        {error && (
+          <p role="alert" className="text-sm text-ink-muted">
+            {error}
+          </p>
+        )}
+
+        {link && (
+          <div className="flex items-center gap-3 rounded-[14px] bg-team-soft py-2.5 pr-2.5 pl-4">
+            <span className="min-w-0 flex-1 truncate font-mono text-xs text-team-ink">{link.url}</span>
+            <Button variant="outline" onClick={copyLink}>
+              <Copy aria-hidden="true" strokeWidth={1.8} />
+              Copiar enlace
+            </Button>
+          </div>
+        )}
+
+        {invitations.length > 0 && (
+          <section className="border-t border-subtle pt-4" aria-labelledby="pending-invitations-title">
+            <Eyebrow id="pending-invitations-title">Pendientes</Eyebrow>
+            <div className="mt-2">
+              {invitations.map((invitation) => (
+                <div key={invitation.id} className="flex items-center gap-3 border-t border-subtle py-2.5 first:border-t-0">
+                  <div className="flex min-w-0 flex-col gap-[3px]">
+                    <span className="text-sm font-medium">{invitation.name}</span>
+                    <span className="truncate text-xs text-ink-muted" suppressHydrationWarning>
+                      {invitation.email} · {invitation.role === "leader" ? "Líder" : "Miembro"} · {formatRelative(invitation.createdAt)}
+                    </span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    className="ml-auto"
+                    onClick={() => void revoke(invitation)}
+                    disabled={revokingId === invitation.id}
+                  >
+                    {revokingId === invitation.id ? "Revocando…" : "Revocar"}
+                  </Button>
+                </div>
+              ))}
             </div>
-          ))}
-        </section>
-      )}
-    </Card>
+          </section>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
