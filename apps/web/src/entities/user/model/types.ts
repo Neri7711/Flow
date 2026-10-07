@@ -8,6 +8,8 @@ export type User = {
   /** Short display name used in activity feeds ("Ana"). */
   shortName: string;
   initials: string;
+  /** Sign-in address. */
+  email: string;
   role: UserRole;
   /** Home space. */
   teamId: TeamId;

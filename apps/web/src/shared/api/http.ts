@@ -61,10 +61,13 @@ async function read<T>(response: Response): Promise<T> {
 export const api = {
   get: async <T>(path: string) => read<T>(await send("GET", path)),
 
-  /** Like `get`, but a 404 or a `null` body resolves to `undefined`. */
-  find: async <T>(path: string): Promise<T | undefined> => {
-    const response = await send("GET", path);
-    if (response.status === 404) return undefined;
+  /**
+   * Like `get`, but a 404 or a `null` body resolves to `undefined`. With
+   * `redirectOnUnauthorized: false`, a 401 also resolves to `undefined` (e.g. "is anyone signed in?").
+   */
+  find: async <T>(path: string, options?: RequestOptions): Promise<T | undefined> => {
+    const response = await send("GET", path, undefined, options);
+    if (response.status === 404 || response.status === 401) return undefined;
     return (await read<T | null>(response)) ?? undefined;
   },
 

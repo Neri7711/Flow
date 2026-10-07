@@ -40,24 +40,9 @@ export class CreateTaskDto {
 export class SetStatusDto {
   @IsIn(STATUSES)
   status!: TaskStatus;
-
-  /** Pass to record the change in the task's activity. */
-  @IsOptional()
-  @IsString()
-  actorId?: string;
-}
-
-export class ToggleDoneDto {
-  @IsOptional()
-  @IsString()
-  actorId?: string;
 }
 
 export class AddCommentDto {
-  @IsString()
-  @IsNotEmpty()
-  actorId!: string;
-
   @IsString()
   @IsNotEmpty()
   body!: string;

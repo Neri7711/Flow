@@ -14,7 +14,10 @@ export type TaskState = {
   tasks: Record<string, Task>;
   /** Activity of the tasks whose detail was opened (loaded on demand). */
   events: readonly TaskEvent[];
-  /** Pass `actorId` to record the change in the task's activity. */
+  /**
+   * The API records every change as the signed-in user; `actorId` (that same user) only
+   * lets the detail panel show the entry right away.
+   */
   setStatus: (id: string, status: TaskStatus, actorId?: string) => Promise<void>;
   /** Checkbox semantics: done ↔ todo. */
   toggleDone: (id: string, actorId?: string) => Promise<void>;
@@ -57,7 +60,7 @@ export function createTaskStore(initialTasks: readonly Task[]): TaskStore {
         }));
 
         try {
-          putTask(await taskApi.updateTaskStatus(id, status, actorId));
+          putTask(await taskApi.updateTaskStatus(id, status));
         } catch {
           set((state) => ({
             tasks: { ...state.tasks, [id]: previous },
@@ -83,7 +86,7 @@ export function createTaskStore(initialTasks: readonly Task[]): TaskStore {
         set((state) => ({ events: [...state.events, draft] }));
 
         try {
-          const saved = await taskApi.addTaskComment(taskId, actorId, body);
+          const saved = await taskApi.addTaskComment(taskId, body);
           set((state) => ({ events: state.events.map((event) => (event === draft ? saved : event)) }));
         } catch {
           set((state) => ({ events: state.events.filter((event) => event !== draft) }));

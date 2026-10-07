@@ -23,6 +23,7 @@ export type UserDto = {
   name: string;
   shortName: string;
   initials: string;
+  email: string;
   role: UserRole;
   teamId: TeamId;
   avatarTone: TeamId | null;

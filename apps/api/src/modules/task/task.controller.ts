@@ -1,6 +1,8 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
 
-import { AddCommentDto, CreateTaskDto, SetStatusDto, TaskQueryDto, ToggleDoneDto } from "./dto";
+import { CurrentUser, type SessionUser } from "@/auth/session";
+
+import { AddCommentDto, CreateTaskDto, SetStatusDto, TaskQueryDto } from "./dto";
 import { TaskService } from "./task.service";
 
 @Controller()
@@ -34,17 +36,17 @@ export class TaskController {
   }
 
   @Patch("tasks/:id/status")
-  setStatus(@Param("id") id: string, @Body() { status, actorId }: SetStatusDto) {
-    return this.tasks.setStatus(id, status, actorId);
+  setStatus(@Param("id") id: string, @Body() { status }: SetStatusDto, @CurrentUser() user: SessionUser) {
+    return this.tasks.setStatus(id, status, user.id);
   }
 
   @Patch("tasks/:id/toggle-done")
-  toggleDone(@Param("id") id: string, @Body() { actorId }: ToggleDoneDto) {
-    return this.tasks.toggleDone(id, actorId);
+  toggleDone(@Param("id") id: string, @CurrentUser() user: SessionUser) {
+    return this.tasks.toggleDone(id, user.id);
   }
 
   @Post("tasks/:id/comments")
-  addComment(@Param("id") id: string, @Body() body: AddCommentDto) {
-    return this.tasks.addComment(id, body);
+  addComment(@Param("id") id: string, @Body() { body }: AddCommentDto, @CurrentUser() user: SessionUser) {
+    return this.tasks.addComment(id, user.id, body);
   }
 }

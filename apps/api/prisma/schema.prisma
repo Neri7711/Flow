@@ -64,12 +64,16 @@ model Team {
 }
 
 model User {
-  id         String   @id
-  name       String
-  shortName  String
-  initials   String
-  role       UserRole
-  teamId     String
+  id           String   @id
+  /// Sign-in identifier; stored lowercase.
+  email        String   @unique
+  /// scrypt hash (see src/auth/password.ts); null until the user sets a password.
+  passwordHash String?
+  name         String
+  shortName    String
+  initials     String
+  role         UserRole
+  teamId       String
   /// Soft team tint for the avatar; null renders the neutral tone.
   avatarTone String?
   position   Int      @default(autoincrement())

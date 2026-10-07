@@ -1,5 +1,7 @@
 import { Controller, Get, Param } from "@nestjs/common";
 
+import { CurrentUser, type SessionUser } from "@/auth/session";
+
 import { UserService } from "./user.service";
 
 @Controller("users")
@@ -11,9 +13,10 @@ export class UserController {
     return this.users.findAll();
   }
 
+  /** The signed-in user. */
   @Get("me")
-  findCurrent() {
-    return this.users.findCurrent();
+  findCurrent(@CurrentUser() user: SessionUser) {
+    return this.users.findOne(user.id);
   }
 
   @Get(":id")

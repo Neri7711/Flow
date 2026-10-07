@@ -21,10 +21,11 @@ export async function createTask({ teamId, title, status, assigneeId, cycleId, s
   return api.post<Task>("/tasks", { teamId, title, status, assigneeId: assigneeId ?? undefined, cycleId, sourceDocumentId });
 }
 
-export async function updateTaskStatus(id: string, status: TaskStatus, actorId?: string): Promise<Task> {
-  return api.patch<Task>(`/tasks/${segment(id)}/status`, { status, actorId });
+/** The API records the change in the task's activity as the signed-in user. */
+export async function updateTaskStatus(id: string, status: TaskStatus): Promise<Task> {
+  return api.patch<Task>(`/tasks/${segment(id)}/status`, { status });
 }
 
-export async function addTaskComment(taskId: string, actorId: string, body: string): Promise<TaskEvent> {
-  return api.post<TaskEvent>(`/tasks/${segment(taskId)}/comments`, { actorId, body });
+export async function addTaskComment(taskId: string, body: string): Promise<TaskEvent> {
+  return api.post<TaskEvent>(`/tasks/${segment(taskId)}/comments`, { body });
 }

@@ -10,7 +10,18 @@
  */
 import { type Prisma, PrismaClient } from "@prisma/client";
 
+import { hashPassword } from "../src/auth/password";
+
+try {
+  process.loadEnvFile();
+} catch {
+  // No .env file: rely on the real environment.
+}
+
 const prisma = new PrismaClient();
+
+/** Every seeded user signs in with this password (development data only). */
+const SEED_PASSWORD = process.env.SEED_PASSWORD;
 
 const TODAY = "2026-09-30";
 const at = (iso: string) => new Date(iso);
@@ -22,11 +33,11 @@ const TEAMS = [
   { id: "ii", name: "IISE", abbreviation: "II", mascotAlt: "Pantera de IISE" },
 ];
 
-const USERS: Prisma.UserCreateManyInput[] = [
-  { id: "u-moge", name: "Moge", shortName: "Moge", initials: "EM", role: "leader", teamId: "pl", avatarTone: null },
-  { id: "u-ana", name: "Ana López", shortName: "Ana", initials: "AL", role: "member", teamId: "pl", avatarTone: "cs" },
-  { id: "u-fer", name: "Fer Ruiz", shortName: "Fer", initials: "FR", role: "leader", teamId: "pl", avatarTone: "pl" },
-  { id: "u-nico", name: "Nico Herrera", shortName: "Nico", initials: "NH", role: "member", teamId: "pl", avatarTone: "ii" },
+const USERS: Omit<Prisma.UserCreateManyInput, "passwordHash">[] = [
+  { id: "u-moge", email: "moge@flow.test", name: "Moge", shortName: "Moge", initials: "EM", role: "leader", teamId: "pl", avatarTone: null },
+  { id: "u-ana", email: "ana@flow.test", name: "Ana López", shortName: "Ana", initials: "AL", role: "member", teamId: "pl", avatarTone: "cs" },
+  { id: "u-fer", email: "fer@flow.test", name: "Fer Ruiz", shortName: "Fer", initials: "FR", role: "leader", teamId: "pl", avatarTone: "pl" },
+  { id: "u-nico", email: "nico@flow.test", name: "Nico Herrera", shortName: "Nico", initials: "NH", role: "member", teamId: "pl", avatarTone: "ii" },
 ];
 
 const LABELS: Prisma.TaskLabelCreateManyInput[] = [
@@ -135,6 +146,8 @@ function taskSeqFor(abbreviation: string): number {
 }
 
 async function main() {
+  if (!SEED_PASSWORD) throw new Error("Set SEED_PASSWORD in apps/api/.env (see .env.example) before seeding.");
+
   // One statement wipes everything and resets the `position` sequences.
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
@@ -144,7 +157,8 @@ async function main() {
     RESTART IDENTITY CASCADE`);
 
   await prisma.team.createMany({ data: TEAMS.map((team) => ({ ...team, taskSeq: taskSeqFor(team.abbreviation) })) });
-  await prisma.user.createMany({ data: USERS });
+  const passwordHash = await hashPassword(SEED_PASSWORD);
+  await prisma.user.createMany({ data: USERS.map((user) => ({ ...user, passwordHash })) });
   await prisma.taskLabel.createMany({ data: LABELS });
 
   await prisma.cycle.create({

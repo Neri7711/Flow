@@ -9,6 +9,7 @@
     "start": "node dist/main.js",
     "postinstall": "prisma generate",
     "typecheck": "tsc --noEmit",
+    "test:e2e": "node --test \"test/**/*.test.mjs\"",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",

@@ -73,7 +73,7 @@ export class DocumentService {
     return doc.comments.map(toCommentDto);
   }
 
-  async create(input: CreateDocumentDto): Promise<DocumentDto> {
+  async create(input: CreateDocumentDto, authorId: string): Promise<DocumentDto> {
     if (input.parentId) await this.assertValidParent(input.parentId, input.teamId);
 
     const doc = await this.prisma.document.create({
@@ -82,7 +82,7 @@ export class DocumentService {
         teamId: input.teamId,
         title: input.title,
         parentId: input.parentId ?? null,
-        updatedById: input.updatedById,
+        updatedById: authorId,
         updatedAt: now(),
         content: input.content ?? EMPTY_CONTENT,
         propStatus: input.properties?.status ?? null,
@@ -94,7 +94,7 @@ export class DocumentService {
     return toDto(doc);
   }
 
-  async update(id: string, input: UpdateDocumentDto): Promise<DocumentDto> {
+  async update(id: string, input: UpdateDocumentDto, editorId: string): Promise<DocumentDto> {
     const current = await this.prisma.document.findUnique({ where: { id }, select: { teamId: true } });
     if (!current) throw notFound(id);
 
@@ -112,7 +112,7 @@ export class DocumentService {
         title: input.title,
         content: input.content,
         parentId: input.parentId,
-        updatedById: input.updatedById,
+        updatedById: editorId,
         updatedAt: now(),
         propStatus: input.properties?.status,
         propOwnerId: input.properties?.ownerId,
@@ -133,12 +133,12 @@ export class DocumentService {
     });
   }
 
-  async addComment(id: string, input: AddDocumentCommentDto): Promise<DocumentCommentDto> {
+  async addComment(id: string, input: AddDocumentCommentDto, authorId: string): Promise<DocumentCommentDto> {
     const exists = await this.prisma.document.count({ where: { id } });
     if (!exists) throw notFound(id);
 
     const comment = await this.prisma.documentComment.create({
-      data: { documentId: id, authorId: input.authorId, body: input.body, at: now() },
+      data: { documentId: id, authorId, body: input.body, at: now() },
     });
     return toCommentDto(comment);
   }

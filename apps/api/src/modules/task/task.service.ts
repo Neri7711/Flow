@@ -5,7 +5,7 @@ import type { TaskDto, TaskEventDto, TaskLabelDto, TaskStatus } from "@/contract
 import { PrismaService } from "@/prisma/prisma.service";
 import { now } from "@/shared/clock";
 
-import type { AddCommentDto, CreateTaskDto, TaskQueryDto } from "./dto";
+import type { CreateTaskDto, TaskQueryDto } from "./dto";
 
 const include = {
   blockedBy: { select: { blockerId: true } },
@@ -76,18 +76,19 @@ export class TaskService {
     });
   }
 
-  async setStatus(id: string, status: TaskStatus, actorId?: string): Promise<TaskDto> {
+  /** Changes the status and records it in the task's activity as `actorId`. */
+  async setStatus(id: string, status: TaskStatus, actorId: string): Promise<TaskDto> {
     const current = await this.getStatus(id);
     return current === status ? this.findOne(id) : this.applyStatus(id, status, actorId);
   }
 
   /** Checkbox semantics: done <-> todo. */
-  async toggleDone(id: string, actorId?: string): Promise<TaskDto> {
+  async toggleDone(id: string, actorId: string): Promise<TaskDto> {
     const current = await this.getStatus(id);
     return this.applyStatus(id, current === "done" ? "todo" : "done", actorId);
   }
 
-  async addComment(taskId: string, { actorId, body }: AddCommentDto): Promise<TaskEventDto> {
+  async addComment(taskId: string, actorId: string, body: string): Promise<TaskEventDto> {
     await this.getStatus(taskId);
     const event = await this.prisma.taskEvent.create({
       data: { taskId, kind: "comment", actorId, body, at: now() },
@@ -101,13 +102,9 @@ export class TaskService {
     return task.status;
   }
 
-  /** Updates the status and, when an actor is given, logs it in the task's activity. */
-  private async applyStatus(id: string, status: TaskStatus, actorId?: string): Promise<TaskDto> {
-    const update = this.prisma.task.update({ where: { id }, data: { status }, include });
-    if (!actorId) return toDto(await update);
-
+  private async applyStatus(id: string, status: TaskStatus, actorId: string): Promise<TaskDto> {
     const [task] = await this.prisma.$transaction([
-      update,
+      this.prisma.task.update({ where: { id }, data: { status }, include }),
       this.prisma.taskEvent.create({ data: { taskId: id, kind: "status", actorId, status, at: now() } }),
     ]);
     return toDto(task);
