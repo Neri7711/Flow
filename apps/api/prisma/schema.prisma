@@ -42,6 +42,12 @@ enum TaskEventKind {
   comment
 }
 
+enum TriageStatus {
+  pending
+  accepted
+  declined
+}
+
 /// Team ids double as URL slugs and theme keys ("cs" | "pl" | "me" | "ii").
 model Team {
   id           String @id
@@ -61,6 +67,7 @@ model Team {
   activities     Activity[]
   triageOutgoing TriageRequest[] @relation("TriageFrom")
   triageIncoming TriageRequest[] @relation("TriageTo")
+  invitations    Invitation[]
 }
 
 model User {
@@ -85,7 +92,9 @@ model User {
   documentComments  DocumentComment[]
   authoredDocuments Document[]        @relation("DocumentUpdatedBy")
   activities        Activity[]
-  triageRequests    TriageRequest[]
+  triageRequests    TriageRequest[]   @relation("TriageRequester")
+  triageDecisions   TriageRequest[]   @relation("TriageDecider")
+  invitationsSent   Invitation[]
 
   @@index([teamId])
 }
@@ -290,7 +299,7 @@ model DocumentComment {
 }
 
 model CalendarEvent {
-  id       String    @id
+  id       String    @id @default(cuid())
   teamId   String
   title    String
   startsAt DateTime
@@ -322,16 +331,44 @@ model Activity {
 
 /// A request from another team (or a new member) waiting for a leader's decision.
 model TriageRequest {
-  id          String   @id
+  id          String       @id @default(cuid())
   fromTeamId  String
   toTeamId    String
   title       String
   requesterId String?
   createdAt   DateTime
+  status      TriageStatus @default(pending)
+  decidedAt   DateTime?
+  decidedById String?
+  /// Task created in the receiving team when the request was accepted.
+  taskId      String?
 
   fromTeam  Team  @relation("TriageFrom", fields: [fromTeamId], references: [id])
   toTeam    Team  @relation("TriageTo", fields: [toTeamId], references: [id])
-  requester User? @relation(fields: [requesterId], references: [id])
+  requester User? @relation("TriageRequester", fields: [requesterId], references: [id])
+  decidedBy User? @relation("TriageDecider", fields: [decidedById], references: [id])
 
-  @@index([toTeamId, createdAt])
+  @@index([toTeamId, status, createdAt])
+}
+
+/// One-time invitation to join a team; the invitee sets their password with the link.
+model Invitation {
+  id          String    @id @default(cuid())
+  /// SHA-256 of the link's token (the token itself is shown once and never stored).
+  tokenHash   String    @unique
+  /// Stored lowercase.
+  email       String
+  name        String
+  role        UserRole
+  teamId      String
+  invitedById String
+  createdAt   DateTime
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+
+  team      Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  invitedBy User @relation(fields: [invitedById], references: [id])
+
+  @@index([teamId])
+  @@index([email])
 }

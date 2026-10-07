@@ -45,7 +45,7 @@ export async function SpaceHomePage({ teamId }: { teamId: string }) {
 
         <div className="grid gap-5 lg:grid-cols-3">
           <TodayTasksCard teamId={team.id} date={today} labels={labels} users={users} />
-          <UpcomingEventsCard events={events} />
+          <UpcomingEventsCard teamId={team.id} events={events} />
           {project && <ProjectProgressCard project={project} />}
           <RecentDocumentsCard documents={documents} users={users} className="lg:col-span-2" />
           <ActivityCard activity={activity} users={users} />

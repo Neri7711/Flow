@@ -10,3 +10,11 @@ export type CalendarEvent = {
   /** Dot color in event lists. */
   tone: TeamId;
 };
+
+export type NewCalendarEvent = {
+  teamId: TeamId;
+  title: string;
+  startsAt: string;
+  /** Omit or `null` for an all-day event. */
+  endsAt?: string | null;
+};

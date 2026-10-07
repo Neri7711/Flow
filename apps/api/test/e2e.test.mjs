@@ -296,3 +296,139 @@ describe("documents", () => {
     assert.equal((await moge.get("/tasks/PL-43")).sourceDocumentId, undefined);
   });
 });
+
+describe("inbox (triage)", () => {
+  let fer; // the other leader of Play
+  before(async () => {
+    fer = as(await login("fer@flow.test"));
+  });
+
+  test("anyone can ask another team; asking your own team is refused", async () => {
+    const { body } = await ana.post("/triage", { toTeamId: "cs", title: "Revisar el build de Windows" }, 201);
+    assert.deepEqual([body.fromTeamId, body.toTeamId, body.requesterId, body.status], ["pl", "cs", "u-ana", "pending"]);
+    assert.ok((await moge.get("/triage?teamId=cs")).some((request) => request.id === body.id));
+    await ana.post("/triage", { toTeamId: "pl", title: "x" }, 400);
+  });
+
+  test("only leaders of the receiving team decide", async () => {
+    const [toCs] = await moge.get("/triage?teamId=cs");
+    await moge.post(`/triage/${toCs.id}/accept`, {}, 403); // leads Play, not CS
+    await ana.post("/triage/tr-1/accept", {}, 403); // member of Play
+  });
+
+  test("accepting creates the task in the receiving team, exactly once", async () => {
+    const { body } = await moge.post("/triage/tr-1/accept", { status: "backlog" }, 200);
+    assert.equal(body.request.status, "accepted");
+    assert.equal(body.request.taskId, body.task.id);
+    assert.deepEqual([body.task.teamId, body.task.title, body.task.status], ["pl", "Medidas del control para el stand", "backlog"]);
+    assert.equal((await moge.get(`/tasks/${body.task.id}`)).title, "Medidas del control para el stand");
+    await fer.post("/triage/tr-1/accept", {}, 409);
+    await fer.post("/triage/tr-1/decline", {}, 409);
+  });
+
+  test("declining removes it from the inbox", async () => {
+    assert.equal((await fer.post("/triage/tr-2/decline", {}, 200)).body.status, "declined");
+    assert.deepEqual(await moge.get("/triage?teamId=pl"), []);
+  });
+});
+
+describe("calendar", () => {
+  const october = "/events?teamId=pl&from=2026-10-01T06:00:00.000Z&to=2026-11-01T06:00:00.000Z";
+  let created;
+
+  test("events in a date range", async () => {
+    assert.deepEqual((await moge.get(october)).map((event) => event.id), ["ev-kickoff", "ev-playtest", "ev-builds"]);
+    assert.equal((await moge.raw("/events?teamId=pl&from=2026-11-01T00:00:00Z&to=2026-10-01T00:00:00Z")).status, 400);
+    assert.equal((await moge.raw("/events?teamId=pl")).status, 400);
+  });
+
+  test("create validates the span and the tone, and shows up in the feed", async () => {
+    const base = { teamId: "pl", title: "Retro del ciclo", startsAt: "2026-10-12T17:00:00-06:00" };
+    await ana.post("/events", { ...base, endsAt: "2026-10-12T16:00:00-06:00" }, 400);
+    await ana.post("/events", { ...base, tone: "zz" }, 400);
+    ({ body: created } = await ana.post("/events", { ...base, endsAt: "2026-10-12T18:00:00-06:00" }, 201));
+    assert.equal(created.tone, "pl");
+    assert.ok((await moge.get(october)).some((event) => event.id === created.id));
+    const [latest] = await moge.get("/activity/recent?teamId=pl&limit=1");
+    assert.equal(`${latest.actorId}: ${latest.summary}`, "u-ana: agregó Retro del ciclo al calendario");
+  });
+
+  test("edit and delete", async () => {
+    const { body } = await moge.patch(`/events/${created.id}`, { title: "Retro del ciclo 4", endsAt: null }, 200);
+    assert.deepEqual([body.title, body.endsAt], ["Retro del ciclo 4", null]);
+    await moge.delete(`/events/${created.id}`, undefined, 200);
+    await moge.delete(`/events/${created.id}`, undefined, 404);
+  });
+});
+
+describe("members", () => {
+  let nico; // member of Play
+  before(async () => {
+    nico = as(await login("nico@flow.test"));
+  });
+
+  test("filter people by team", async () => {
+    assert.equal((await moge.get("/users?teamId=pl")).length, 4);
+    assert.deepEqual(await moge.get("/users?teamId=cs"), []);
+  });
+
+  test("leaders change roles in their team, never their own; members can't", async () => {
+    await nico.patch("/users/u-ana/role", { role: "leader" }, 403);
+    await moge.patch("/users/u-moge/role", { role: "member" }, 400);
+    assert.equal((await moge.patch("/users/u-ana/role", { role: "leader" }, 200)).body.role, "leader");
+    // The guard re-reads the user, so Ana's new role applies to her current session.
+    await ana.patch("/users/u-nico/role", { role: "member" }, 200);
+    await moge.patch("/users/u-ana/role", { role: "member" }, 200);
+    await ana.patch("/users/u-nico/role", { role: "leader" }, 403);
+  });
+});
+
+describe("invitations", () => {
+  let nico;
+  let token;
+  before(async () => {
+    nico = as(await login("nico@flow.test"));
+  });
+
+  test("leaders invite; existing accounts and members are refused", async () => {
+    await nico.post("/invitations", { email: "sofia@flow.test", name: "Sofía Ramírez", role: "member" }, 403);
+    await moge.post("/invitations", { email: "ANA@flow.test", name: "Ana", role: "member" }, 409);
+    const { body } = await moge.post("/invitations", { email: " Sofia@Flow.test ", name: "Sofía Ramírez", role: "member" }, 201);
+    token = body.token;
+    assert.equal(body.invitation.email, "sofia@flow.test");
+    assert.ok(!("tokenHash" in body.invitation));
+    assert.deepEqual((await moge.get("/invitations?teamId=pl")).map((invitation) => invitation.email), ["sofia@flow.test"]);
+    assert.equal((await nico.raw("/invitations?teamId=pl")).status, 403);
+  });
+
+  test("the link previews the invitation without a session", async () => {
+    const preview = await request("GET", `/invitations/preview/${token}`);
+    assert.equal(preview.status, 200);
+    assert.deepEqual(preview.body, { email: "sofia@flow.test", name: "Sofía Ramírez", role: "member", teamId: "pl", teamName: "Play" });
+    assert.equal((await request("GET", "/invitations/preview/not-a-token")).status, 404);
+  });
+
+  test("accepting creates the account, signs in and uses up the link", async () => {
+    assert.equal((await request("POST", "/invitations/accept", { body: { token, password: "corta" } })).status, 400);
+    const { status, body } = await request("POST", "/invitations/accept", { body: { token, password: "una-clave-segura" } });
+    assert.equal(status, 200);
+    assert.deepEqual([body.user.shortName, body.user.initials, body.user.teamId, body.user.role], ["Sofía", "SR", "pl", "member"]);
+    assert.equal((await as(body.token).get("/users/me")).email, "sofia@flow.test");
+
+    const again = await request("POST", "/auth/login", { body: { email: "sofia@flow.test", password: "una-clave-segura" } });
+    assert.equal(again.status, 200);
+    assert.equal((await request("POST", "/invitations/accept", { body: { token, password: "otra-clave-segura" } })).status, 404);
+    assert.equal((await request("GET", `/invitations/preview/${token}`)).status, 404);
+    assert.equal((await moge.get("/users?teamId=pl")).length, 5);
+    assert.deepEqual(await moge.get("/invitations?teamId=pl"), []);
+    const [latest] = await moge.get("/activity/recent?teamId=pl&limit=1");
+    assert.equal(latest.summary, "se unió al equipo");
+  });
+
+  test("revoked links stop working", async () => {
+    const { body } = await moge.post("/invitations", { email: "leo@flow.test", name: "Leo", role: "member" }, 201);
+    await nico.delete(`/invitations/${body.invitation.id}`, undefined, 403);
+    await moge.delete(`/invitations/${body.invitation.id}`, undefined, 200);
+    assert.equal((await request("GET", `/invitations/preview/${body.token}`)).status, 404);
+  });
+});

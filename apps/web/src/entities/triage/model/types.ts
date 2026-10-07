@@ -8,4 +8,8 @@ export type TriageRequest = {
   title: string;
   requesterId: string | null;
   createdAt: string;
+  /** Lists only show pending requests; decisions return the final state. */
+  status?: "pending" | "accepted" | "declined";
+  /** Task created when the request was accepted. */
+  taskId?: string | null;
 };

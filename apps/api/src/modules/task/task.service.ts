@@ -50,33 +50,8 @@ export class TaskService {
   }
 
   /** Creates a task with the next per-team identifier (PL-56 -> PL-57) and returns it. */
-  async create(input: CreateTaskDto, actorId: string): Promise<TaskDto> {
-    return this.prisma.$transaction(async (tx) => {
-      // Atomic increment: the row lock serializes concurrent creates for the same team.
-      const team = await tx.team
-        .update({ where: { id: input.teamId }, data: { taskSeq: { increment: 1 } } })
-        .catch((error: unknown) => {
-          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
-            throw new BadRequestException(`Team "${input.teamId}" does not exist`);
-          }
-          throw error;
-        });
-
-      const task = await tx.task.create({
-        data: {
-          id: `${team.abbreviation}-${team.taskSeq}`,
-          teamId: team.id,
-          title: input.title,
-          status: input.status,
-          assigneeId: input.assigneeId ?? null,
-          cycleId: input.cycleId,
-          sourceDocumentId: input.sourceDocumentId,
-        },
-        include,
-      });
-      await recordActivity(tx, { teamId: team.id, actorId, summary: `creó ${task.id}` });
-      return toDto(task);
-    });
+  create(input: CreateTaskDto, actorId: string): Promise<TaskDto> {
+    return this.prisma.$transaction((tx) => createTask(tx, input, actorId));
   }
 
   /** Changes the status and records it in the task's activity as `actorId`. */
@@ -115,6 +90,36 @@ export class TaskService {
     ]);
     return toDto(task);
   }
+}
+
+export type NewTaskInput = Pick<CreateTaskDto, "teamId" | "title" | "status" | "assigneeId" | "cycleId" | "sourceDocumentId">;
+
+/** Task creation inside the caller's transaction (triage acceptance reuses it). */
+export async function createTask(tx: Prisma.TransactionClient, input: NewTaskInput, actorId: string): Promise<TaskDto> {
+  // Atomic increment: the row lock serializes concurrent creates for the same team.
+  const team = await tx.team
+    .update({ where: { id: input.teamId }, data: { taskSeq: { increment: 1 } } })
+    .catch((error: unknown) => {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+        throw new BadRequestException(`Team "${input.teamId}" does not exist`);
+      }
+      throw error;
+    });
+
+  const task = await tx.task.create({
+    data: {
+      id: `${team.abbreviation}-${team.taskSeq}`,
+      teamId: team.id,
+      title: input.title,
+      status: input.status,
+      assigneeId: input.assigneeId ?? null,
+      cycleId: input.cycleId,
+      sourceDocumentId: input.sourceDocumentId,
+    },
+    include,
+  });
+  await recordActivity(tx, { teamId: team.id, actorId, summary: `creó ${task.id}` });
+  return toDto(task);
 }
 
 function toDto(task: TaskWithRelations): TaskDto {

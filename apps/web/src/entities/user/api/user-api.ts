@@ -1,8 +1,8 @@
 "use server";
 
-import { api } from "@/shared/api";
+import { api, query, segment } from "@/shared/api";
 
-import type { User } from "../model/types";
+import type { User, UserRole } from "../model/types";
 
 /** The signed-in user; without a valid session this redirects to the login screen. */
 export async function getCurrentUser(): Promise<User> {
@@ -16,4 +16,13 @@ export async function getSessionUser(): Promise<User | undefined> {
 
 export async function getUsers(): Promise<readonly User[]> {
   return api.get<User[]>("/users");
+}
+
+export async function getTeamMembers(teamId: string): Promise<readonly User[]> {
+  return api.get<User[]>(`/users${query({ teamId })}`);
+}
+
+/** Leaders only, for members of their own team (not themselves). */
+export async function changeUserRole(id: string, role: UserRole): Promise<User> {
+  return api.patch<User>(`/users/${segment(id)}/role`, { role });
 }

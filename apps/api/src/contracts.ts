@@ -125,4 +125,27 @@ export type TriageRequestDto = {
   title: string;
   requesterId: string | null;
   createdAt: string;
+  status: "pending" | "accepted" | "declined";
+  /** Task created when the request was accepted. */
+  taskId: string | null;
+};
+
+export type InvitationDto = {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  teamId: TeamId;
+  invitedById: string;
+  createdAt: string;
+  expiresAt: string;
+};
+
+/** What an invitation link reveals before it's accepted. */
+export type InvitationPreviewDto = {
+  email: string;
+  name: string;
+  role: UserRole;
+  teamId: TeamId;
+  teamName: string;
 };

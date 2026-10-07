@@ -153,7 +153,7 @@ async function main() {
     TRUNCATE TABLE
       "TaskEvent", "TaskDependency", "DocumentTaskMention", "DocumentComment", "Task", "Document",
       "ProjectArea", "Milestone", "Project", "Cycle", "CalendarEvent", "Activity", "TriageRequest",
-      "TaskLabel", "User", "Team"
+      "Invitation", "TaskLabel", "User", "Team"
     RESTART IDENTITY CASCADE`);
 
   await prisma.team.createMany({ data: TEAMS.map((team) => ({ ...team, taskSeq: taskSeqFor(team.abbreviation) })) });

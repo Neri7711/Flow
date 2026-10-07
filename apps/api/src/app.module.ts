@@ -7,6 +7,7 @@ import { ActivityModule } from "./modules/activity/activity.module";
 import { CycleModule } from "./modules/cycle/cycle.module";
 import { DocumentModule } from "./modules/document/document.module";
 import { EventModule } from "./modules/event/event.module";
+import { InvitationModule } from "./modules/invitation/invitation.module";
 import { ProjectModule } from "./modules/project/project.module";
 import { TaskModule } from "./modules/task/task.module";
 import { TeamModule } from "./modules/team/team.module";
@@ -28,6 +29,7 @@ import { PrismaModule } from "./prisma/prisma.module";
     EventModule,
     ActivityModule,
     TriageModule,
+    InvitationModule,
   ],
   controllers: [HealthController],
 })
