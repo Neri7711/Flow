@@ -119,7 +119,7 @@ export function InvitePanel({ invitations }: { invitations: readonly Invitation[
             <div key={invitation.id} className="flex items-center gap-3 border-t border-subtle py-2.5">
               <div className="flex min-w-0 flex-col gap-[3px]">
                 <span className="text-sm font-medium">{invitation.name}</span>
-                <span className="truncate text-xs text-ink-muted">
+                <span className="truncate text-xs text-ink-muted" suppressHydrationWarning>
                   {invitation.email} · {invitation.role === "leader" ? "Líder" : "Miembro"} · {formatRelative(invitation.createdAt)}
                 </span>
               </div>

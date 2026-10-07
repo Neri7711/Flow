@@ -36,7 +36,7 @@ export function CycleHeader({ cycle, project }: CycleHeaderProps) {
           <h1 className="text-[32px] font-bold tracking-display">
             {formatDayMonth(cycle.startsAt)} – {formatDayMonth(cycle.endsAt)}
           </h1>
-          <span className="font-serif text-xl text-ink-muted italic">
+          <span className="font-serif text-xl text-ink-muted italic" suppressHydrationWarning>
             {daysLeft === 1 ? "queda 1 día" : `quedan ${daysLeft} días`}
           </span>
         </div>

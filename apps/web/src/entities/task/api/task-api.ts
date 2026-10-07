@@ -2,7 +2,7 @@
 
 import { api, segment } from "@/shared/api";
 
-import type { NewTask, Task, TaskEvent, TaskLabel, TaskStatus } from "../model/types";
+import type { NewTask, Task, TaskEvent, TaskLabel, TaskPatch, TaskStatus } from "../model/types";
 
 export async function getTasks(): Promise<readonly Task[]> {
   return api.get<Task[]>("/tasks");
@@ -23,6 +23,14 @@ export async function getTaskEvents(taskId: string): Promise<readonly TaskEvent[
 /** The API assigns the next per-team identifier (PL-57) and returns the created task. */
 export async function createTask({ teamId, title, status, assigneeId, cycleId, sourceDocumentId }: NewTask): Promise<Task> {
   return api.post<Task>("/tasks", { teamId, title, status, assigneeId: assigneeId ?? undefined, cycleId, sourceDocumentId });
+}
+
+export async function updateTask(id: string, patch: TaskPatch): Promise<Task> {
+  return api.patch<Task>(`/tasks/${segment(id)}`, patch);
+}
+
+export async function deleteTask(id: string): Promise<void> {
+  await api.delete(`/tasks/${segment(id)}`);
 }
 
 /** The API records the change in the task's activity as the signed-in user. */

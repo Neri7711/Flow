@@ -53,7 +53,7 @@ export function DocumentComments({ documentId, comments, users }: DocumentCommen
                 <div className="flex items-center gap-2.5">
                   {author && <UserAvatar user={author} size={28} ring />}
                   <span className="text-sm font-semibold">{author?.shortName}</span>
-                  <span className="ml-auto font-mono text-[10px] whitespace-nowrap text-ink-muted uppercase">{formatRelative(comment.at)}</span>
+                  <span className="ml-auto font-mono text-[10px] whitespace-nowrap text-ink-muted uppercase" suppressHydrationWarning>{formatRelative(comment.at)}</span>
                 </div>
                 <p className="text-sm leading-normal">{comment.body}</p>
               </div>

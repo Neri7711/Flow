@@ -1,10 +1,8 @@
 /**
- * Reference "now" while all data is static fixtures, so relative dates
- * ("hace 2 h", "quedan 8 días", greetings) stay consistent with the mockups.
- * Replace usages with the real clock once data comes from the backend.
+ * Single source of "now" for the app (relative dates, greetings, "today", progress).
+ * Values derived from it while rendering can differ between the server render and
+ * hydration, so elements that show them use `suppressHydrationWarning`.
  */
-export const MOCK_NOW = new Date("2026-09-30T09:30:00-06:00");
-
 export function now(): Date {
-  return MOCK_NOW;
+  return new Date();
 }

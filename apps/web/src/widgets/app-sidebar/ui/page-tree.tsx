@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { ChevronRight, File, Plus } from "lucide-react";
 
 import { buildDocumentTree, type Document, type DocumentTreeNode, getAncestorIds } from "@/entities/document";
+import { useCreatePage } from "@/features/create-page";
 import { routes } from "@/shared/config";
 import { cn } from "@/shared/lib/utils";
 import { Eyebrow } from "@/shared/ui/eyebrow";
@@ -22,6 +23,7 @@ const indentFor = (depth: number) => 10 + depth * 18;
 export function PageTree({ teamId, teamName, documents }: PageTreeProps) {
   const pathname = usePathname();
   const activeId = documents.find((doc) => pathname === routes.document(teamId, doc.id))?.id;
+  const { createPage, pending } = useCreatePage(teamId);
 
   // Ancestors of the open document are expanded by default; `toggled` stores the user's
   // overrides, so navigating to another page still reveals it in the tree.
@@ -96,8 +98,13 @@ export function PageTree({ teamId, teamName, documents }: PageTreeProps) {
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center px-2.5">
         <Eyebrow>Páginas de {teamName}</Eyebrow>
-        {/* Creating pages is out of the simulated scope. */}
-        <button type="button" aria-label="Nueva página" className="ml-auto flex cursor-pointer p-0.5 text-ink-muted">
+        <button
+          type="button"
+          aria-label="Nueva página"
+          onClick={createPage}
+          disabled={pending}
+          className="ml-auto flex cursor-pointer p-0.5 text-ink-muted"
+        >
           <Plus className="size-3.5" strokeWidth={1.8} />
         </button>
       </div>

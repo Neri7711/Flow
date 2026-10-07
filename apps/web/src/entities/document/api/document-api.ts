@@ -36,6 +36,20 @@ export async function addDocumentComment(documentId: string, body: string, paren
   return api.post<DocumentComment>(`/documents/${segment(documentId)}/comments`, { body, parentId });
 }
 
+/** New page at the top level of a space (or under `parentId`); the author is the signed-in user. */
+export async function createDocument(input: { teamId: string; title: string; parentId?: string }): Promise<Document> {
+  return api.post<Document>("/documents", input);
+}
+
+export async function renameDocument(id: string, title: string): Promise<Document> {
+  return api.patch<Document>(`/documents/${segment(id)}`, { title });
+}
+
+/** Deletes the page and its subpages. */
+export async function deleteDocument(id: string): Promise<void> {
+  await api.delete(`/documents/${segment(id)}`);
+}
+
 /** Persists the editor's HTML (autosave). */
 export async function saveDocumentContent(id: string, content: string): Promise<void> {
   await api.patch(`/documents/${segment(id)}`, { content });

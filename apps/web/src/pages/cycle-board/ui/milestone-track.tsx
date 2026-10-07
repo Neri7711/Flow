@@ -10,7 +10,8 @@ function elapsed(project: Project): number {
   const start = Math.min(...dates);
   const end = Math.max(...dates);
   if (end === start) return 0;
-  return Math.min(1, Math.max(0, (now().getTime() - start) / (end - start)));
+  // Rounded: the server render and hydration happen a few ms apart.
+  return Math.round(Math.min(1, Math.max(0, (now().getTime() - start) / (end - start))) * 1000) / 1000;
 }
 
 export function MilestoneTrack({ project }: { project: Project }) {
@@ -26,6 +27,7 @@ export function MilestoneTrack({ project }: { project: Project }) {
         <span
           aria-hidden="true"
           className="absolute top-1.5 left-5 h-0.5 bg-team-strong"
+          suppressHydrationWarning
           style={{ width: `calc((100% - 2.5rem) * ${elapsed(project)})` }}
         />
         {project.milestones.map((milestone) => {

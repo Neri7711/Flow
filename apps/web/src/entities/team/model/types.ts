@@ -12,4 +12,6 @@ export type Team = {
   abbreviation: string;
   /** Short description of the mascot accessory, used as alt text. */
   mascotAlt: string;
+  /** Weekly highlight on the space's home; `null` shows the default line. Leaders edit it. */
+  weeklyNote: string | null;
 };

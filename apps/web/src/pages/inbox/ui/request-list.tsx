@@ -71,7 +71,7 @@ export function RequestList({ requests, teams, users, canDecide, teamName }: Req
             {from && <TeamAvatar team={from} size={36} decorative />}
             <div className="flex min-w-0 flex-col gap-[3px]">
               <span className="truncate text-sm font-medium">{request.title}</span>
-              <span className="text-xs text-ink-muted">
+              <span className="text-xs text-ink-muted" suppressHydrationWarning>
                 {from?.name ?? "Otro equipo"}
                 {requester && ` · ${requester.shortName}`} · {formatRelative(request.createdAt)}
               </span>

@@ -37,6 +37,7 @@ export async function signIn(_previous: SignInState, form: FormData): Promise<Si
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) return { error: "Correo o contraseña incorrectos.", email };
     if (error instanceof ApiError && error.status === 400) return { error: "Escribe un correo válido.", email };
+    if (error instanceof ApiError && error.status === 429) return { error: "Demasiados intentos. Espera unos minutos e inténtalo de nuevo.", email };
     return { error: "No pudimos iniciar sesión. Inténtalo de nuevo en un momento.", email };
   }
   return startSession(session);

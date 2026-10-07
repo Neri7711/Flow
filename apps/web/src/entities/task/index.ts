@@ -1,4 +1,4 @@
-export type { NewTask, Task, TaskEvent, TaskLabel, TaskPriority, TaskStatus } from "./model/types";
+export type { NewTask, Task, TaskEvent, TaskLabel, TaskPatch, TaskPriority, TaskStatus } from "./model/types";
 export { TASK_STATUS_LABEL, TASK_STATUSES } from "./config/statuses";
 export { getTaskLabels, getTasks } from "./api/task-api";
 export { type TaskStore, TaskStoreProvider, useTaskStore, useTaskStoreApi } from "./model/task-store";
