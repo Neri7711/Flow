@@ -5,11 +5,13 @@ import type { TaskDto, TaskEventDto, TaskLabelDto, TaskStatus } from "@/contract
 import { PrismaService } from "@/prisma/prisma.service";
 import { now } from "@/shared/clock";
 
-import type { AddCommentDto, CreateTaskDto, TaskQueryDto } from "./dto";
+import { recordActivity } from "../activity/activity.recorder";
+
+import type { CreateTaskDto, TaskQueryDto, UpdateTaskDto } from "./dto";
 
 const include = {
   blockedBy: { select: { blockerId: true } },
-  mentions: { select: { documentId: true } },
+  mentions: { select: { documentId: true }, orderBy: { documentId: "asc" } },
 } satisfies Prisma.TaskInclude;
 
 type TaskWithRelations = Prisma.TaskGetPayload<{ include: typeof include }>;
@@ -41,77 +43,133 @@ export class TaskService {
   async getEvents(taskId: string): Promise<TaskEventDto[]> {
     const task = await this.prisma.task.findUnique({
       where: { id: taskId },
-      select: { events: { orderBy: { at: "asc" } } },
+      select: { events: { orderBy: [{ at: "asc" }, { position: "asc" }] } },
     });
     if (!task) throw new NotFoundException(`Task "${taskId}" not found`);
     return task.events.map(toEventDto);
   }
 
   /** Creates a task with the next per-team identifier (PL-56 -> PL-57) and returns it. */
-  async create(input: CreateTaskDto): Promise<TaskDto> {
-    return this.prisma.$transaction(async (tx) => {
-      // Atomic increment: the row lock serializes concurrent creates for the same team.
-      const team = await tx.team
-        .update({ where: { id: input.teamId }, data: { taskSeq: { increment: 1 } } })
-        .catch((error: unknown) => {
-          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
-            throw new BadRequestException(`Team "${input.teamId}" does not exist`);
-          }
-          throw error;
-        });
+  create(input: CreateTaskDto, actorId: string): Promise<TaskDto> {
+    return this.prisma.$transaction((tx) => createTask(tx, input, actorId));
+  }
 
-      const task = await tx.task.create({
+  /** Edits a task's fields; `blockedByIds` replaces its dependencies (no self-blocks, no cycles). */
+  async update(id: string, input: UpdateTaskDto): Promise<TaskDto> {
+    await this.getSummary(id);
+    const blockers = input.blockedByIds ? [...new Set(input.blockedByIds)] : undefined;
+    if (blockers) await this.assertNoCycle(id, blockers);
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.task.update({
+        where: { id },
         data: {
-          id: `${team.abbreviation}-${team.taskSeq}`,
-          teamId: team.id,
-          title: input.title,
-          status: input.status,
-          assigneeId: input.assigneeId ?? null,
+          title: input.title?.trim(),
+          // `undefined` keeps a column; `null` clears it.
+          description: input.description === undefined ? undefined : input.description?.trim() || null,
+          assigneeId: input.assigneeId,
+          priority: input.priority,
+          labelId: input.labelId,
+          dueDate: input.dueDate,
           cycleId: input.cycleId,
-          sourceDocumentId: input.sourceDocumentId,
         },
-        include,
       });
-      return toDto(task);
+      if (blockers) {
+        await tx.taskDependency.deleteMany({ where: { taskId: id } });
+        if (blockers.length) await tx.taskDependency.createMany({ data: blockers.map((blockerId) => ({ taskId: id, blockerId })) });
+      }
+      return toDto(await tx.task.findUniqueOrThrow({ where: { id }, include }));
     });
   }
 
-  async setStatus(id: string, status: TaskStatus, actorId?: string): Promise<TaskDto> {
-    const current = await this.getStatus(id);
-    return current === status ? this.findOne(id) : this.applyStatus(id, status, actorId);
+  async remove(id: string): Promise<{ id: string }> {
+    // History, dependencies and backlinks cascade with the task.
+    const deleted = await this.prisma.task.deleteMany({ where: { id } });
+    if (deleted.count === 0) throw new NotFoundException(`Task "${id}" not found`);
+    return { id };
+  }
+
+  /** A task can't wait on itself or on anything it (directly or indirectly) blocks. */
+  private async assertNoCycle(id: string, blockers: string[]): Promise<void> {
+    if (blockers.includes(id)) throw new BadRequestException("Una tarea no puede bloquearse a sí misma");
+    const downstream = await this.prisma.$queryRaw<{ id: string }[]>`
+      WITH RECURSIVE downstream AS (
+        SELECT "taskId" AS id FROM "TaskDependency" WHERE "blockerId" = ${id}
+        UNION
+        SELECT d."taskId" FROM "TaskDependency" d JOIN downstream s ON d."blockerId" = s.id
+      )
+      SELECT id FROM downstream`;
+    const blocked = new Set(downstream.map((row) => row.id));
+    const loop = blockers.find((blocker) => blocked.has(blocker));
+    if (loop) throw new BadRequestException(`${loop} ya depende de ${id}: se formaría un ciclo`);
+  }
+
+  /** Changes the status and records it in the task's activity as `actorId`. */
+  async setStatus(id: string, status: TaskStatus, actorId: string): Promise<TaskDto> {
+    const current = await this.getSummary(id);
+    return current.status === status ? this.findOne(id) : this.applyStatus(id, current.teamId, status, actorId);
   }
 
   /** Checkbox semantics: done <-> todo. */
-  async toggleDone(id: string, actorId?: string): Promise<TaskDto> {
-    const current = await this.getStatus(id);
-    return this.applyStatus(id, current === "done" ? "todo" : "done", actorId);
+  async toggleDone(id: string, actorId: string): Promise<TaskDto> {
+    const current = await this.getSummary(id);
+    return this.applyStatus(id, current.teamId, current.status === "done" ? "todo" : "done", actorId);
   }
 
-  async addComment(taskId: string, { actorId, body }: AddCommentDto): Promise<TaskEventDto> {
-    await this.getStatus(taskId);
-    const event = await this.prisma.taskEvent.create({
-      data: { taskId, kind: "comment", actorId, body, at: now() },
-    });
+  async addComment(taskId: string, actorId: string, body: string): Promise<TaskEventDto> {
+    const { teamId } = await this.getSummary(taskId);
+    const [event] = await this.prisma.$transaction([
+      this.prisma.taskEvent.create({ data: { taskId, kind: "comment", actorId, body, at: now() } }),
+      recordActivity(this.prisma, { teamId, actorId, summary: `comentó en ${taskId}` }),
+    ]);
     return toEventDto(event);
   }
 
-  private async getStatus(id: string): Promise<TaskStatus> {
-    const task = await this.prisma.task.findUnique({ where: { id }, select: { status: true } });
+  private async getSummary(id: string): Promise<{ status: TaskStatus; teamId: string }> {
+    const task = await this.prisma.task.findUnique({ where: { id }, select: { status: true, teamId: true } });
     if (!task) throw new NotFoundException(`Task "${id}" not found`);
-    return task.status;
+    return task;
   }
 
-  /** Updates the status and, when an actor is given, logs it in the task's activity. */
-  private async applyStatus(id: string, status: TaskStatus, actorId?: string): Promise<TaskDto> {
-    const update = this.prisma.task.update({ where: { id }, data: { status }, include });
-    if (!actorId) return toDto(await update);
-
+  /** Updates the status, logs it in the task's history and, when it's completed, in the team feed. */
+  private async applyStatus(id: string, teamId: string, status: TaskStatus, actorId: string): Promise<TaskDto> {
     const [task] = await this.prisma.$transaction([
-      update,
+      this.prisma.task.update({ where: { id }, data: { status }, include }),
       this.prisma.taskEvent.create({ data: { taskId: id, kind: "status", actorId, status, at: now() } }),
+      ...(status === "done" ? [recordActivity(this.prisma, { teamId, actorId, summary: `completó ${id}` })] : []),
     ]);
     return toDto(task);
   }
+}
+
+export type NewTaskInput = Pick<CreateTaskDto, "teamId" | "title" | "status" | "assigneeId" | "cycleId" | "sourceDocumentId">;
+
+/** Task creation inside the caller's transaction (triage acceptance reuses it). */
+export async function createTask(tx: Prisma.TransactionClient, input: NewTaskInput, actorId: string): Promise<TaskDto> {
+  // Atomic increment: the row lock serializes concurrent creates for the same team.
+  const team = await tx.team
+    .update({ where: { id: input.teamId }, data: { taskSeq: { increment: 1 } } })
+    .catch((error: unknown) => {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+        throw new BadRequestException(`Team "${input.teamId}" does not exist`);
+      }
+      throw error;
+    });
+
+  const task = await tx.task.create({
+    data: {
+      id: `${team.abbreviation}-${team.taskSeq}`,
+      teamId: team.id,
+      title: input.title,
+      status: input.status,
+      assigneeId: input.assigneeId ?? null,
+      cycleId: input.cycleId,
+      sourceDocumentId: input.sourceDocumentId,
+    },
+    include,
+  });
+  await recordActivity(tx, { teamId: team.id, actorId, summary: `creó ${task.id}` });
+  return toDto(task);
 }
 
 function toDto(task: TaskWithRelations): TaskDto {

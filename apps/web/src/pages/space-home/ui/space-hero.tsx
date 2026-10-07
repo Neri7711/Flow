@@ -1,6 +1,5 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Plus } from "lucide-react";
 
 import type { Team } from "@/entities/team";
 import type { User } from "@/entities/user";
@@ -9,10 +8,8 @@ import { greetingFor } from "@/shared/lib/format-date";
 import { Button } from "@/shared/ui/button";
 import { MonoTag } from "@/shared/ui/mono-tag";
 
-/** Weekly highlight per space (content will come from the backend). */
-const SPACE_NOTES: Partial<Record<Team["id"], string>> = {
-  pl: "Esta semana arranca la game jam de otoño.",
-};
+import { NewPageButton } from "./new-page-button";
+import { WeeklyNote } from "./weekly-note";
 
 type SpaceHeroProps = {
   team: Team;
@@ -27,15 +24,13 @@ export function SpaceHero({ team, user }: SpaceHeroProps) {
         <h1 className="text-[44px] leading-[1.05] font-bold tracking-[-0.035em]">
           <span className="text-team-muted">{greetingFor()},</span> {user.name}
         </h1>
-        <p className="font-serif text-2xl text-team-ink italic">
-          {SPACE_NOTES[team.id] ?? `Todo lo de ${team.name}, en un solo lugar.`}
-        </p>
+        <WeeklyNote
+          team={team}
+          editable={user.role === "leader" && user.teamId === team.id}
+          className="font-serif text-2xl text-team-ink italic"
+        />
         <div className="mt-2 flex gap-2.5">
-          {/* Creating pages is out of the simulated scope. */}
-          <Button size="md">
-            <Plus strokeWidth={1.8} />
-            Nueva página
-          </Button>
+          <NewPageButton teamId={team.id} />
           <Button size="md" variant="secondary" asChild>
             <Link href={routes.tasks(team.id)}>Ver tareas</Link>
           </Button>

@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
 
+import { CurrentUser, type SessionUser } from "@/auth/session";
 import { OptionalTeamQueryDto, TeamLimitQueryDto, TeamQueryDto } from "@/shared/query.dto";
 
 import { AddDocumentCommentDto, CreateDocumentDto, UpdateDocumentDto } from "./dto";
@@ -43,13 +44,13 @@ export class DocumentController {
   }
 
   @Post()
-  create(@Body() body: CreateDocumentDto) {
-    return this.documents.create(body);
+  create(@Body() body: CreateDocumentDto, @CurrentUser() user: SessionUser) {
+    return this.documents.create(body, user.id);
   }
 
   @Patch(":id")
-  update(@Param("id") id: string, @Body() body: UpdateDocumentDto) {
-    return this.documents.update(id, body);
+  update(@Param("id") id: string, @Body() body: UpdateDocumentDto, @CurrentUser() user: SessionUser) {
+    return this.documents.update(id, body, user.id);
   }
 
   @Delete(":id")
@@ -58,7 +59,7 @@ export class DocumentController {
   }
 
   @Post(":id/comments")
-  addComment(@Param("id") id: string, @Body() body: AddDocumentCommentDto) {
-    return this.documents.addComment(id, body);
+  addComment(@Param("id") id: string, @Body() body: AddDocumentCommentDto, @CurrentUser() user: SessionUser) {
+    return this.documents.addComment(id, body, user.id);
   }
 }

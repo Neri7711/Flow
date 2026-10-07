@@ -38,6 +38,18 @@ export type TaskEvent =
   | { id: string; taskId: string; kind: "status"; actorId: string; status: TaskStatus; at: string }
   | { id: string; taskId: string; kind: "comment"; actorId: string; body: string; at: string };
 
+/** Editable fields: omit to keep, `null` to clear. `blockedByIds` replaces the whole list. */
+export type TaskPatch = {
+  title?: string;
+  description?: string | null;
+  assigneeId?: string | null;
+  priority?: TaskPriority | null;
+  labelId?: string | null;
+  /** Calendar day "YYYY-MM-DD". */
+  dueDate?: string | null;
+  blockedByIds?: string[];
+};
+
 export type NewTask = {
   teamId: TeamId;
   /** Team abbreviation used to build the identifier (PL → PL-57). */

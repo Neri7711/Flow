@@ -42,6 +42,12 @@ enum TaskEventKind {
   comment
 }
 
+enum TriageStatus {
+  pending
+  accepted
+  declined
+}
+
 /// Team ids double as URL slugs and theme keys ("cs" | "pl" | "me" | "ii").
 model Team {
   id           String @id
@@ -51,6 +57,8 @@ model Team {
   position     Int    @default(autoincrement())
   /// Last number handed out for task identifiers (PL-56 -> next is PL-57).
   taskSeq      Int    @default(0)
+  /// Weekly highlight shown on the space's home; leaders edit it.
+  weeklyNote   String?
 
   users          User[]
   tasks          Task[]
@@ -61,18 +69,23 @@ model Team {
   activities     Activity[]
   triageOutgoing TriageRequest[] @relation("TriageFrom")
   triageIncoming TriageRequest[] @relation("TriageTo")
+  invitations    Invitation[]
 }
 
 model User {
-  id         String   @id
-  name       String
-  shortName  String
-  initials   String
-  role       UserRole
-  teamId     String
+  id           String   @id
+  /// Sign-in identifier; stored lowercase.
+  email        String   @unique
+  /// scrypt hash (see src/auth/password.ts); null until the user sets a password.
+  passwordHash String?
+  name         String
+  shortName    String
+  initials     String
+  role         UserRole
+  teamId       String
   /// Soft team tint for the avatar; null renders the neutral tone.
-  avatarTone String?
-  position   Int      @default(autoincrement())
+  avatarTone   String?
+  position     Int      @default(autoincrement())
 
   team Team @relation(fields: [teamId], references: [id])
 
@@ -81,7 +94,9 @@ model User {
   documentComments  DocumentComment[]
   authoredDocuments Document[]        @relation("DocumentUpdatedBy")
   activities        Activity[]
-  triageRequests    TriageRequest[]
+  triageRequests    TriageRequest[]   @relation("TriageRequester")
+  triageDecisions   TriageRequest[]   @relation("TriageDecider")
+  invitationsSent   Invitation[]
 
   @@index([teamId])
 }
@@ -149,15 +164,17 @@ model TaskDependency {
 }
 
 model TaskEvent {
-  id      String        @id @default(cuid())
-  taskId  String
-  kind    TaskEventKind
-  actorId String
+  id       String        @id @default(cuid())
+  taskId   String
+  kind     TaskEventKind
+  actorId  String
   /// Set when kind = status.
-  status  TaskStatus?
+  status   TaskStatus?
   /// Set when kind = comment.
-  body    String?
-  at      DateTime
+  body     String?
+  at       DateTime
+  /// Tiebreaker for entries with the same `at`.
+  position Int           @default(autoincrement())
 
   task  Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
   actor User @relation(fields: [actorId], references: [id])
@@ -262,21 +279,29 @@ model DocumentTaskMention {
   @@index([taskId])
 }
 
+/// Margin comments. Threads are one level deep: a reply's parent is always a top-level comment.
 model DocumentComment {
   id         String   @id @default(cuid())
   documentId String
+  /// null for a thread's first comment.
+  parentId   String?
   authorId   String
   body       String
   at         DateTime
+  /// Tiebreaker for comments with the same `at`.
+  position   Int      @default(autoincrement())
 
-  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  author   User     @relation(fields: [authorId], references: [id])
+  document Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  author   User              @relation(fields: [authorId], references: [id])
+  parent   DocumentComment?  @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  DocumentComment[] @relation("CommentThread")
 
   @@index([documentId, at])
+  @@index([parentId])
 }
 
 model CalendarEvent {
-  id       String    @id
+  id       String    @id @default(cuid())
   teamId   String
   title    String
   startsAt DateTime
@@ -291,12 +316,14 @@ model CalendarEvent {
 }
 
 model Activity {
-  id      String   @id
-  teamId  String
-  actorId String
+  id       String   @id @default(cuid())
+  teamId   String
+  actorId  String
   /// What the actor did, rendered after their name.
-  summary String
-  at      DateTime
+  summary  String
+  at       DateTime
+  /// Tiebreaker for entries with the same `at`.
+  position Int      @default(autoincrement())
 
   team  Team @relation(fields: [teamId], references: [id])
   actor User @relation(fields: [actorId], references: [id])
@@ -306,16 +333,44 @@ model Activity {
 
 /// A request from another team (or a new member) waiting for a leader's decision.
 model TriageRequest {
-  id          String   @id
+  id          String       @id @default(cuid())
   fromTeamId  String
   toTeamId    String
   title       String
   requesterId String?
   createdAt   DateTime
+  status      TriageStatus @default(pending)
+  decidedAt   DateTime?
+  decidedById String?
+  /// Task created in the receiving team when the request was accepted.
+  taskId      String?
 
   fromTeam  Team  @relation("TriageFrom", fields: [fromTeamId], references: [id])
   toTeam    Team  @relation("TriageTo", fields: [toTeamId], references: [id])
-  requester User? @relation(fields: [requesterId], references: [id])
+  requester User? @relation("TriageRequester", fields: [requesterId], references: [id])
+  decidedBy User? @relation("TriageDecider", fields: [decidedById], references: [id])
 
-  @@index([toTeamId, createdAt])
+  @@index([toTeamId, status, createdAt])
+}
+
+/// One-time invitation to join a team; the invitee sets their password with the link.
+model Invitation {
+  id          String    @id @default(cuid())
+  /// SHA-256 of the link's token (the token itself is shown once and never stored).
+  tokenHash   String    @unique
+  /// Stored lowercase.
+  email       String
+  name        String
+  role        UserRole
+  teamId      String
+  invitedById String
+  createdAt   DateTime
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+
+  team      Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  invitedBy User @relation(fields: [invitedById], references: [id])
+
+  @@index([teamId])
+  @@index([email])
 }

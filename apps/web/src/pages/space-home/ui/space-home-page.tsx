@@ -8,6 +8,7 @@ import { getTaskLabels } from "@/entities/task";
 import { getTeam } from "@/entities/team";
 import { getCurrentUser, getUsers } from "@/entities/user";
 import { now, routes } from "@/shared/config";
+import { dayKey } from "@/shared/lib/format-date";
 import { AppTopbar } from "@/widgets/app-topbar";
 
 import { ActivityCard } from "./activity-card";
@@ -31,7 +32,8 @@ export async function SpaceHomePage({ teamId }: { teamId: string }) {
     getRecentActivity(team.id),
   ]);
   const presence = users.filter((candidate) => candidate.id !== user.id);
-  const today = now().toISOString().slice(0, 10);
+  // Calendar day in the app's time zone (due dates are "YYYY-MM-DD").
+  const today = dayKey(now());
 
   return (
     <>
@@ -45,7 +47,7 @@ export async function SpaceHomePage({ teamId }: { teamId: string }) {
 
         <div className="grid gap-5 lg:grid-cols-3">
           <TodayTasksCard teamId={team.id} date={today} labels={labels} users={users} />
-          <UpcomingEventsCard events={events} />
+          <UpcomingEventsCard teamId={team.id} events={events} />
           {project && <ProjectProgressCard project={project} />}
           <RecentDocumentsCard documents={documents} users={users} className="lg:col-span-2" />
           <ActivityCard activity={activity} users={users} />

@@ -1,8 +1,8 @@
 "use client";
 
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
-import { ChartNoAxesColumnIncreasing, Ellipsis, File, Link as LinkIcon, X } from "lucide-react";
+import { ChartNoAxesColumnIncreasing, File, Link as LinkIcon, X } from "lucide-react";
 import { motion } from "motion/react";
 import { useShallow } from "zustand/react/shallow";
 
@@ -19,6 +19,7 @@ import {
 import { TeamAvatar } from "@/entities/team";
 import { UserAvatar } from "@/entities/user";
 import { motionTokens, routes } from "@/shared/config";
+import { copyText } from "@/shared/lib/clipboard";
 import { formatDayMonth, formatRelative } from "@/shared/lib/format-date";
 import { toast } from "@/shared/lib/toast";
 import { Button } from "@/shared/ui/button";
@@ -28,9 +29,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
+import { EditableText } from "@/shared/ui/editable-text";
 import { Eyebrow } from "@/shared/ui/eyebrow";
 
 import { type BoardDirectory, findById } from "../model/directory";
+import { TaskOptionsMenu } from "./task-options-menu";
 
 const PRIORITY_LABEL: Record<TaskPriority, string> = { low: "Baja", medium: "Media", high: "Alta" };
 
@@ -46,6 +49,12 @@ export function TaskDetailPanel({ task, directory, onClose }: TaskDetailPanelPro
   const setStatus = useTaskStore((state) => state.setStatus);
   const allTasks = useTaskStore((state) => state.tasks);
   const events = useTaskStore(useShallow((state) => state.events.filter((event) => event.taskId === task.id)));
+  const loadDetail = useTaskStore((state) => state.loadDetail);
+  const updateTask = useTaskStore((state) => state.updateTask);
+
+  useEffect(() => {
+    void loadDetail(task.id);
+  }, [loadDetail, task.id]);
 
   const assignee = findById(directory.users, task.assigneeId);
   const taskCycle = cycle && task.cycleId === cycle.id ? cycle : undefined;
@@ -59,8 +68,8 @@ export function TaskDetailPanel({ task, directory, onClose }: TaskDetailPanelPro
     .filter((doc) => doc !== undefined);
 
   const copyLink = async () => {
-    await navigator.clipboard.writeText(window.location.href);
-    toast(<>Enlace a <b>{task.id}</b> copiado.</>);
+    if (await copyText(window.location.href)) toast(<>Enlace a <b>{task.id}</b> copiado.</>);
+    else toast("No se pudo copiar el enlace.");
   };
 
   return (
@@ -78,9 +87,7 @@ export function TaskDetailPanel({ task, directory, onClose }: TaskDetailPanelPro
           <Button variant="ghost" size="icon" aria-label="Copiar enlace" onClick={copyLink}>
             <LinkIcon strokeWidth={1.8} />
           </Button>
-          <Button variant="ghost" size="icon" aria-label="Más opciones">
-            <Ellipsis strokeWidth={1.8} />
-          </Button>
+          <TaskOptionsMenu task={task} directory={directory} onDeleted={onClose} />
           <Button variant="ghost" size="icon" aria-label="Cerrar panel" onClick={onClose}>
             <X strokeWidth={1.8} />
           </Button>
@@ -88,7 +95,14 @@ export function TaskDetailPanel({ task, directory, onClose }: TaskDetailPanelPro
       </div>
 
       <div className="flex flex-col gap-3">
-        <h2 className="text-[26px] leading-[1.15] font-bold tracking-[-0.025em]">{task.title}</h2>
+        <EditableText
+          key={task.id}
+          as="h2"
+          value={task.title}
+          onSave={(title) => void updateTask(task.id, { title })}
+          label={`Título de ${task.id}`}
+          className="text-[26px] leading-[1.15] font-bold tracking-[-0.025em]"
+        />
         <DropdownMenu>
           <DropdownMenuTrigger className="cursor-pointer self-start rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
             <TaskStatusBadge status={task.status} />
@@ -144,7 +158,17 @@ export function TaskDetailPanel({ task, directory, onClose }: TaskDetailPanelPro
         )}
       </dl>
 
-      {task.description && <p className="text-sm leading-[1.6] text-ink/85">{task.description}</p>}
+      {task.description && (
+        <EditableText
+          key={`${task.id}-description`}
+          as="p"
+          value={task.description}
+          onSave={(description) => void updateTask(task.id, { description: description || null })}
+          label={`Descripción de ${task.id}`}
+          allowEmpty
+          className="text-sm leading-[1.6] text-ink/85"
+        />
+      )}
 
       {(blockedBy.length > 0 || blocks.length > 0) && (
         <section className="flex flex-col gap-2">
@@ -181,7 +205,7 @@ export function TaskDetailPanel({ task, directory, onClose }: TaskDetailPanelPro
                 <span>
                   <b className="font-semibold text-ink">{actor.shortName}</b> movió a {TASK_STATUS_LABEL[event.status]}
                 </span>
-                <span className="ml-auto font-mono text-[10px] uppercase">{formatRelative(event.at)}</span>
+                <span className="ml-auto font-mono text-[10px] uppercase" suppressHydrationWarning>{formatRelative(event.at)}</span>
               </div>
             );
           }
@@ -192,7 +216,7 @@ export function TaskDetailPanel({ task, directory, onClose }: TaskDetailPanelPro
               <div className="flex grow flex-col gap-1 rounded-xl border border-line bg-surface px-3 py-2.5">
                 <div className="flex items-center">
                   <span className="text-[13px] font-semibold">{actor.shortName}</span>
-                  <span className="ml-auto font-mono text-[10px] text-ink-muted uppercase">{formatRelative(event.at)}</span>
+                  <span className="ml-auto font-mono text-[10px] text-ink-muted uppercase" suppressHydrationWarning>{formatRelative(event.at)}</span>
                 </div>
                 <p className="text-[13px] leading-normal">
                   <TaskMentionText text={event.body} />

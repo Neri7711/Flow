@@ -22,6 +22,8 @@ export type DocumentProperties = {
 export type DocumentComment = {
   id: string;
   documentId: string;
+  /** `null` for a thread's first comment; replies point at it (threads are one level deep). */
+  parentId: string | null;
   authorId: string;
   body: string;
   at: string;

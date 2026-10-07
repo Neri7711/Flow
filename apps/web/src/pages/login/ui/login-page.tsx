@@ -1,5 +1,7 @@
+import { redirect } from "next/navigation";
+
 import { getTeams } from "@/entities/team";
-import { getCurrentUser } from "@/entities/user";
+import { getSessionUser } from "@/entities/user";
 import { CurvedStripes } from "@/shared/ui/brand-stripes";
 import { Eyebrow } from "@/shared/ui/eyebrow";
 import { Logo } from "@/shared/ui/logo";
@@ -12,7 +14,9 @@ import { TeamShowcaseCard } from "./team-showcase-card";
 const CARD_TILTS = ["-rotate-3", "rotate-[2.5deg]", "rotate-2", "-rotate-[2.5deg]"];
 
 export async function LoginPage() {
-  const [teams, user] = await Promise.all([getTeams(), getCurrentUser()]);
+  const [teams, user] = await Promise.all([getTeams(), getSessionUser()]);
+  // Already signed in: nothing to do here.
+  if (user) redirect(`/${user.teamId}`);
 
   return (
     <div className="grid min-h-dvh lg:grid-cols-[minmax(0,1fr)_minmax(0,1.12fr)]">
@@ -26,7 +30,7 @@ export async function LoginPage() {
             <p className="font-serif text-2xl text-ink-muted italic">Tu equipo te está esperando.</p>
           </div>
 
-          <SignInForm redirectTo={`/${user.teamId}`} />
+          <SignInForm />
 
           <p className="text-sm text-ink-muted">¿Eres nuevo? Pide acceso a tu líder de equipo.</p>
         </div>

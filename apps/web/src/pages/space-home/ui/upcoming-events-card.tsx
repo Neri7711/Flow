@@ -1,16 +1,19 @@
+import Link from "next/link";
 import { Clock } from "lucide-react";
 
 import type { CalendarEvent } from "@/entities/event";
+import { routes } from "@/shared/config";
 import { formatDayOfMonth, formatMonthShort, formatTime } from "@/shared/lib/format-date";
 import { Card, CardHeader, CardTitle } from "@/shared/ui/card";
 
-export function UpcomingEventsCard({ events }: { events: readonly CalendarEvent[] }) {
+export function UpcomingEventsCard({ teamId, events }: { teamId: string; events: readonly CalendarEvent[] }) {
   return (
     <Card>
       <CardHeader>
         <CardTitle>Próximos eventos</CardTitle>
-        {/* Calendar view is out of the current scope. */}
-        <span className="text-[13px]">Ver calendario</span>
+        <Link href={routes.calendar(teamId)} className="text-[13px] underline-offset-2 hover:underline">
+          Ver calendario
+        </Link>
       </CardHeader>
 
       {events.length === 0 && <p className="border-t border-subtle py-3 text-sm text-ink-muted">Sin eventos próximos.</p>}

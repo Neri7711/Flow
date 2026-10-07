@@ -1,11 +1,12 @@
 import { Fragment } from "react";
 import Link from "next/link";
-import { ChevronRight, Ellipsis, Share } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
 import { type User, UserAvatar } from "@/entities/user";
 import { cn } from "@/shared/lib/utils";
-import { Button } from "@/shared/ui/button";
 import { Eyebrow } from "@/shared/ui/eyebrow";
+
+import { TopbarActions, type TopbarPage } from "./topbar-actions";
 
 export type BreadcrumbItem = {
   label: string;
@@ -19,9 +20,11 @@ type AppTopbarProps = {
   presence: readonly User[];
   /** Optional metadata after the breadcrumb ("EDITADO HACE 5 MIN"). */
   meta?: string;
+  /** The document being viewed, if any: enables "Eliminar página" in the options menu. */
+  page?: TopbarPage;
 };
 
-export function AppTopbar({ breadcrumb, presence, meta }: AppTopbarProps) {
+export function AppTopbar({ breadcrumb, presence, meta, page }: AppTopbarProps) {
   return (
     <header className="flex h-topbar shrink-0 items-center gap-3 border-b border-line px-7">
       <nav aria-label="Ruta" className="flex min-w-0 items-center gap-1.5 text-sm">
@@ -53,14 +56,7 @@ export function AppTopbar({ breadcrumb, presence, meta }: AppTopbarProps) {
             <UserAvatar key={person.id} user={person} size={26} ring className={cn(index > 0 && "-ml-1.5")} />
           ))}
         </div>
-        {/* Sharing is out of the simulated scope. */}
-        <Button>
-          <Share strokeWidth={1.8} />
-          Compartir
-        </Button>
-        <Button variant="ghost" size="icon" aria-label="Más opciones">
-          <Ellipsis strokeWidth={1.8} />
-        </Button>
+        <TopbarActions page={page} />
       </div>
     </header>
   );

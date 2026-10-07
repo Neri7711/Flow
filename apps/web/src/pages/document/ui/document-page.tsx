@@ -10,6 +10,7 @@ import { AppTopbar } from "@/widgets/app-topbar";
 
 import { DocumentComments } from "./document-comments";
 import { DocumentProperties } from "./document-properties";
+import { DocumentTitle } from "./document-title";
 import { DocumentEditor } from "./editor/document-editor";
 
 type DocumentPageProps = {
@@ -42,6 +43,7 @@ export async function DocumentPage({ teamId, documentId }: DocumentPageProps) {
           { label: document.title },
         ]}
         meta={`Editado ${formatRelative(document.updatedAt)}`}
+        page={{ id: document.id, teamId: team.id, title: document.title }}
         presence={users.filter((user) => user.id !== currentUser.id)}
       />
 
@@ -54,12 +56,16 @@ export async function DocumentPage({ teamId, documentId }: DocumentPageProps) {
         <div />
         <article className="-mt-11 flex flex-col gap-[22px]">
           <TeamAvatar team={team} size={88} className="ring-[5px] ring-cream" decorative />
-          <h1 className="text-[42px] leading-[1.08] font-bold tracking-[-0.035em]">{document.title}</h1>
+          <DocumentTitle
+            documentId={document.id}
+            title={document.title}
+            className="text-[42px] leading-[1.08] font-bold tracking-[-0.035em]"
+          />
           <DocumentProperties document={document} users={users} />
           <DocumentEditor documentId={document.id} team={team} content={content} />
         </article>
         <aside className="hidden pt-[470px] xl:block">
-          <DocumentComments comments={comments} users={users} currentUser={currentUser} />
+          <DocumentComments documentId={document.id} comments={comments} users={users} />
         </aside>
       </div>
     </>

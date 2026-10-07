@@ -1,19 +1,22 @@
-import { now } from "@/shared/config";
+"use server";
 
-import type { CalendarEvent } from "../model/types";
+import { api, query, segment } from "@/shared/api";
 
-const EVENTS: readonly CalendarEvent[] = [
-  { id: "ev-kickoff", teamId: "pl", title: "Kickoff game jam", startsAt: "2026-10-02T17:00:00-06:00", endsAt: "2026-10-02T18:30:00-06:00", tone: "pl" },
-  { id: "ev-playtest", teamId: "pl", title: "Playtest interno", startsAt: "2026-10-07T16:00:00-06:00", endsAt: "2026-10-07T17:00:00-06:00", tone: "cs" },
-  { id: "ev-builds", teamId: "pl", title: "Entrega de builds", startsAt: "2026-10-10T00:00:00-06:00", endsAt: null, tone: "ii" },
-  { id: "ev-cs-review", teamId: "cs", title: "Revisión de arquitectura", startsAt: "2026-10-03T12:00:00-06:00", endsAt: "2026-10-03T13:00:00-06:00", tone: "cs" },
-];
-
-// Static data for now. Async on purpose: same signature the backend-backed version will have.
+import type { CalendarEvent, NewCalendarEvent } from "../model/types";
 
 export async function getUpcomingEvents(teamId: string, limit = 3): Promise<readonly CalendarEvent[]> {
-  const reference = now().toISOString();
-  return EVENTS.filter((event) => event.teamId === teamId && event.startsAt >= reference)
-    .toSorted((a, b) => a.startsAt.localeCompare(b.startsAt))
-    .slice(0, limit);
+  return api.get<CalendarEvent[]>(`/events/upcoming${query({ teamId, limit })}`);
+}
+
+/** Events starting in [from, to) (ISO instants). */
+export async function getEvents(teamId: string, from: string, to: string): Promise<readonly CalendarEvent[]> {
+  return api.get<CalendarEvent[]>(`/events${query({ teamId, from, to })}`);
+}
+
+export async function createEvent(input: NewCalendarEvent): Promise<CalendarEvent> {
+  return api.post<CalendarEvent>("/events", input);
+}
+
+export async function deleteEvent(id: string): Promise<void> {
+  await api.delete(`/events/${segment(id)}`);
 }

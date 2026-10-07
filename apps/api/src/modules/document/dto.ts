@@ -30,10 +30,6 @@ export class CreateDocumentDto {
   @IsString()
   parentId?: string | null;
 
-  @IsString()
-  @IsNotEmpty()
-  updatedById!: string;
-
   @IsOptional()
   @IsString()
   content?: string;
@@ -63,19 +59,15 @@ export class UpdateDocumentDto {
   @ValidateNested()
   @Type(() => DocumentPropertiesInput)
   properties?: DocumentPropertiesInput;
-
-  /** Who performed the edit. */
-  @IsOptional()
-  @IsString()
-  updatedById?: string;
 }
 
 export class AddDocumentCommentDto {
   @IsString()
   @IsNotEmpty()
-  authorId!: string;
-
-  @IsString()
-  @IsNotEmpty()
   body!: string;
+
+  /** Thread to reply to; omit to start a new thread. */
+  @IsOptional()
+  @IsString()
+  parentId?: string;
 }

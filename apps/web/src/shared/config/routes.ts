@@ -7,4 +7,6 @@ export const routes = {
   tasks: (teamId: string) => `/${teamId}/tasks`,
   members: (teamId: string) => `/${teamId}/members`,
   document: (teamId: string, documentId: string) => `/${teamId}/docs/${documentId}`,
+  /** Where an invited person sets their password. */
+  invite: (token: string) => `/invite/${token}`,
 } as const;

@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
-import { Settings } from "lucide-react";
 
 import type { Document } from "@/entities/document";
 import type { Team } from "@/entities/team";
 import { type User, UserAvatar } from "@/entities/user";
+import { SignOutButton } from "@/features/auth";
 
 import { MainNav } from "./main-nav";
 import { PageTree } from "./page-tree";
@@ -42,13 +42,7 @@ export function AppSidebar({ team, teams, user, documents, inboxCount, search }:
           <span className="text-sm font-semibold">{user.name}</span>
           <span className="text-xs text-ink-muted">{ROLE_LABEL[user.role]}</span>
         </span>
-        <button
-          type="button"
-          aria-label="Ajustes"
-          className="ml-auto flex cursor-pointer rounded-lg p-1.5 text-ink-muted hover:bg-surface/60"
-        >
-          <Settings className="size-4" strokeWidth={1.8} />
-        </button>
+        <SignOutButton className="ml-auto" />
       </div>
     </aside>
   );

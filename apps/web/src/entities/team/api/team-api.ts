@@ -1,16 +1,18 @@
-import type { Team, TeamId } from "../model/types";
-import { TEAMS } from "./fixtures";
+"use server";
 
-// Static data for now. Async on purpose: same signature the backend-backed version will have.
+import { api, segment } from "@/shared/api";
+
+import type { Team } from "../model/types";
 
 export async function getTeams(): Promise<readonly Team[]> {
-  return TEAMS;
+  return api.get<Team[]>("/teams");
 }
 
 export async function getTeam(id: string): Promise<Team | undefined> {
-  return TEAMS.find((team) => team.id === id);
+  return api.find<Team>(`/teams/${segment(id)}`);
 }
 
-export function isTeamId(value: string): value is TeamId {
-  return TEAMS.some((team) => team.id === value);
+/** Leaders of the team only; empty clears it. */
+export async function updateWeeklyNote(teamId: string, weeklyNote: string | null): Promise<Team> {
+  return api.patch<Team>(`/teams/${segment(teamId)}`, { weeklyNote });
 }

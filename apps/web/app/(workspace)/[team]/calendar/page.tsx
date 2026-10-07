@@ -1,8 +1,8 @@
-import { ComingSoonPage } from "@/pages/coming-soon";
+import { CalendarPage } from "@/pages/calendar";
 
 export const metadata = { title: "Calendario" };
 
-export default async function Page({ params }: PageProps<"/[team]/calendar">) {
-  const { team } = await params;
-  return <ComingSoonPage teamId={team} title="Calendario" />;
+export default async function Page({ params, searchParams }: PageProps<"/[team]/calendar">) {
+  const [{ team }, { month }] = await Promise.all([params, searchParams]);
+  return <CalendarPage teamId={team} month={typeof month === "string" ? month : undefined} />;
 }

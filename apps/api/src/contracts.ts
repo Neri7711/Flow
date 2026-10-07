@@ -16,6 +16,8 @@ export type TeamDto = {
   name: string;
   abbreviation: string;
   mascotAlt: string;
+  /** Weekly highlight on the space's home (null: the web shows its default line). */
+  weeklyNote: string | null;
 };
 
 export type UserDto = {
@@ -23,6 +25,7 @@ export type UserDto = {
   name: string;
   shortName: string;
   initials: string;
+  email: string;
   role: UserRole;
   teamId: TeamId;
   avatarTone: TeamId | null;
@@ -93,6 +96,8 @@ export type DocumentDto = {
 export type DocumentCommentDto = {
   id: string;
   documentId: string;
+  /** null for a thread's first comment. */
+  parentId: string | null;
   authorId: string;
   body: string;
   at: string;
@@ -122,4 +127,27 @@ export type TriageRequestDto = {
   title: string;
   requesterId: string | null;
   createdAt: string;
+  status: "pending" | "accepted" | "declined";
+  /** Task created when the request was accepted. */
+  taskId: string | null;
+};
+
+export type InvitationDto = {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  teamId: TeamId;
+  invitedById: string;
+  createdAt: string;
+  expiresAt: string;
+};
+
+/** What an invitation link reveals before it's accepted. */
+export type InvitationPreviewDto = {
+  email: string;
+  name: string;
+  role: UserRole;
+  teamId: TeamId;
+  teamName: string;
 };

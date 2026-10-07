@@ -1,30 +1,56 @@
-import type { Document, DocumentComment } from "../model/types";
-import { DOCUMENT_COMMENTS, DOCUMENT_CONTENT, DOCUMENTS } from "./fixtures";
+"use server";
 
-// Static data for now. Async on purpose: same signature the backend-backed version will have.
+import { api, query, segment } from "@/shared/api";
+
+import type { Document, DocumentComment } from "../model/types";
+
+const EMPTY_CONTENT = "<p></p>";
 
 export async function getAllDocuments(): Promise<readonly Document[]> {
-  return DOCUMENTS;
+  return api.get<Document[]>("/documents");
 }
 
 export async function getTeamDocuments(teamId: string): Promise<readonly Document[]> {
-  return DOCUMENTS.filter((doc) => doc.teamId === teamId);
+  return api.get<Document[]>(`/documents${query({ teamId })}`);
 }
 
 export async function getRecentDocuments(teamId: string, limit = 4): Promise<readonly Document[]> {
-  return DOCUMENTS.filter((doc) => doc.teamId === teamId)
-    .toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, limit);
+  return api.get<Document[]>(`/documents/recent${query({ teamId, limit })}`);
 }
 
 export async function getDocument(id: string): Promise<Document | undefined> {
-  return DOCUMENTS.find((doc) => doc.id === id);
+  return api.find<Document>(`/documents/${segment(id)}`);
 }
 
 export async function getDocumentContent(id: string): Promise<string> {
-  return DOCUMENT_CONTENT[id] ?? "<p></p>";
+  const page = await api.find<{ content: string }>(`/documents/${segment(id)}/content`);
+  return page?.content ?? EMPTY_CONTENT;
 }
 
 export async function getDocumentComments(id: string): Promise<readonly DocumentComment[]> {
-  return DOCUMENT_COMMENTS.filter((comment) => comment.documentId === id);
+  return api.get<DocumentComment[]>(`/documents/${segment(id)}/comments`);
+}
+
+/** New thread, or a reply when `parentId` is given. The author is the signed-in user. */
+export async function addDocumentComment(documentId: string, body: string, parentId?: string): Promise<DocumentComment> {
+  return api.post<DocumentComment>(`/documents/${segment(documentId)}/comments`, { body, parentId });
+}
+
+/** New page at the top level of a space (or under `parentId`); the author is the signed-in user. */
+export async function createDocument(input: { teamId: string; title: string; parentId?: string }): Promise<Document> {
+  return api.post<Document>("/documents", input);
+}
+
+export async function renameDocument(id: string, title: string): Promise<Document> {
+  return api.patch<Document>(`/documents/${segment(id)}`, { title });
+}
+
+/** Deletes the page and its subpages. */
+export async function deleteDocument(id: string): Promise<void> {
+  await api.delete(`/documents/${segment(id)}`);
+}
+
+/** Persists the editor's HTML (autosave). */
+export async function saveDocumentContent(id: string, content: string): Promise<void> {
+  await api.patch(`/documents/${segment(id)}`, { content });
 }

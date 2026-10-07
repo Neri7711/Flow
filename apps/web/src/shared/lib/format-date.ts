@@ -14,6 +14,11 @@ const timeFormat = new Intl.DateTimeFormat(LOCALE, {
   timeZone: TIME_ZONE,
 });
 const hourFormat = new Intl.DateTimeFormat(LOCALE, { hour: "numeric", hourCycle: "h23", timeZone: TIME_ZONE });
+const weekdayDayFormat = new Intl.DateTimeFormat(LOCALE, { weekday: "long", day: "numeric", month: "short", timeZone: TIME_ZONE });
+const monthYearFormat = new Intl.DateTimeFormat(LOCALE, { month: "long", year: "numeric", timeZone: TIME_ZONE });
+
+/** Mexico City has had no daylight saving time since 2022, so its UTC offset is fixed. */
+const UTC_OFFSET = "-06:00";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -56,6 +61,26 @@ export function formatDayMonth(iso: string): string {
 /** "17:00" */
 export function formatTime(iso: string): string {
   return timeFormat.format(new Date(iso));
+}
+
+/** "viernes 2 oct" */
+export function formatWeekdayDay(iso: string): string {
+  return weekdayDayFormat.format(new Date(iso)).replace(".", "").replace(",", "");
+}
+
+/** "octubre de 2026" */
+export function formatMonthYear(iso: string): string {
+  return monthYearFormat.format(new Date(iso));
+}
+
+/** "2026-10-02": the calendar day an instant falls on, in the app's time zone. */
+export function dayKey(date: string | Date): string {
+  return dayKeyFormat.format(new Date(date));
+}
+
+/** ISO instant of a calendar day ("2026-10-02") at a wall-clock time ("17:30") in the app's time zone. */
+export function zonedIso(day: string, time = "00:00"): string {
+  return new Date(`${day}T${time}:00${UTC_OFFSET}`).toISOString();
 }
 
 /** Whole days from `reference` until `iso` (negative when past). */
