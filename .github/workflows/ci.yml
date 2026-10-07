@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Web (typecheck, lint, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @flow/web typecheck
+      - run: pnpm --filter @flow/web lint
+      - run: pnpm --filter @flow/web lint:fsd
+      - run: pnpm --filter @flow/web build
+
+  api:
+    name: API (typecheck, build, e2e)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: flow
+          POSTGRES_PASSWORD: flow
+          POSTGRES_DB: flow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U flow -d flow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://flow:flow@localhost:5432/flow?schema=public
+      PORT: 4000
+      WEB_ORIGIN: http://localhost:3000
+      # Test-only values for the throwaway CI database.
+      JWT_SECRET: ci-only-secret
+      SEED_PASSWORD: ci-only-password
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
+      - run: pnpm typecheck
+      - run: pnpm build
+      - run: pnpm prisma:deploy
+      - run: pnpm db:seed
+      - name: Start the API
+        run: |
+          node dist/main.js > api.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4000/api/health > /dev/null && exit 0
+            sleep 1
+          done
+          cat api.log
+          exit 1
+      - run: pnpm test:e2e
+      - name: API log
+        if: failure()
+        run: cat api.log
