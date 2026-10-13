@@ -43,7 +43,7 @@ export function SendRequestForm({ teams, defaultTeamId }: SendRequestFormProps) 
   };
 
   return (
-    <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-[200px_minmax(0,1fr)_auto] sm:items-end">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3">
       <div className="flex flex-col gap-2">
         <Label htmlFor="request-team">Equipo</Label>
         <NativeSelect id="request-team" value={toTeamId} onChange={(event) => setToTeamId(event.target.value)}>
@@ -63,8 +63,8 @@ export function SendRequestForm({ teams, defaultTeamId }: SendRequestFormProps) 
           placeholder="Ej. Revisar el build de Windows"
         />
       </div>
-      <Button type="submit" size="md" className="h-12" disabled={!title.trim() || sending}>
-        Enviar
+      <Button type="submit" variant="secondary" className="self-start" disabled={!title.trim() || sending}>
+        Enviar solicitud
       </Button>
     </form>
   );
