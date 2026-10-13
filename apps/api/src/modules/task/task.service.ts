@@ -6,8 +6,18 @@ import { PrismaService } from "@/prisma/prisma.service";
 import { now } from "@/shared/clock";
 
 import { recordActivity } from "../activity/activity.recorder";
+import { mentionedUserIds, nameOf, notify } from "../notification/notification.recorder";
 
 import type { CreateTaskDto, TaskQueryDto, UpdateTaskDto } from "./dto";
+
+/** Same wording as the web's status labels. */
+const STATUS_LABEL: Record<TaskStatus, string> = {
+  backlog: "Backlog",
+  todo: "Por hacer",
+  in_progress: "En progreso",
+  in_review: "En revisión",
+  done: "Hecho",
+};
 
 const include = {
   blockedBy: { select: { blockerId: true } },
@@ -55,13 +65,14 @@ export class TaskService {
   }
 
   /** Edits a task's fields; `blockedByIds` replaces its dependencies (no self-blocks, no cycles). */
-  async update(id: string, input: UpdateTaskDto): Promise<TaskDto> {
-    await this.getSummary(id);
+  async update(id: string, input: UpdateTaskDto, actorId: string): Promise<TaskDto> {
+    const previous = await this.prisma.task.findUnique({ where: { id }, select: { assigneeId: true } });
+    if (!previous) throw new NotFoundException(`Task "${id}" not found`);
     const blockers = input.blockedByIds ? [...new Set(input.blockedByIds)] : undefined;
     if (blockers) await this.assertNoCycle(id, blockers);
 
     return this.prisma.$transaction(async (tx) => {
-      await tx.task.update({
+      const updated = await tx.task.update({
         where: { id },
         data: {
           title: input.title?.trim(),
@@ -74,6 +85,9 @@ export class TaskService {
           cycleId: input.cycleId,
         },
       });
+      if (updated.assigneeId && updated.assigneeId !== previous.assigneeId) {
+        await notifyAssignment(tx, id, updated.assigneeId, actorId);
+      }
       if (blockers) {
         await tx.taskDependency.deleteMany({ where: { taskId: id } });
         if (blockers.length) await tx.taskDependency.createMany({ data: blockers.map((blockerId) => ({ taskId: id, blockerId })) });
@@ -116,13 +130,22 @@ export class TaskService {
     return this.applyStatus(id, current.teamId, current.status === "done" ? "todo" : "done", actorId);
   }
 
+  /** Comment on a task: `@Name` mentions notify those people; otherwise the assignee hears about it. */
   async addComment(taskId: string, actorId: string, body: string): Promise<TaskEventDto> {
     const { teamId } = await this.getSummary(taskId);
-    const [event] = await this.prisma.$transaction([
-      this.prisma.taskEvent.create({ data: { taskId, kind: "comment", actorId, body, at: now() } }),
-      recordActivity(this.prisma, { teamId, actorId, summary: `comentó en ${taskId}` }),
-    ]);
-    return toEventDto(event);
+    return this.prisma.$transaction(async (tx) => {
+      const event = await tx.taskEvent.create({ data: { taskId, kind: "comment", actorId, body, at: now() } });
+      await recordActivity(tx, { teamId, actorId, summary: `comentó en ${taskId}` });
+
+      const actor = await nameOf(tx, actorId);
+      const mentioned = await mentionedUserIds(tx, body);
+      await notify(tx, { recipients: mentioned, actorId, kind: "mention", title: `${actor} te mencionó en ${taskId}`, excerpt: body, taskId });
+      const task = await tx.task.findUniqueOrThrow({ where: { id: taskId }, select: { assigneeId: true } });
+      if (task.assigneeId && !mentioned.includes(task.assigneeId)) {
+        await notify(tx, { recipients: [task.assigneeId], actorId, kind: "comment", title: `${actor} comentó en ${taskId}`, excerpt: body, taskId });
+      }
+      return toEventDto(event);
+    });
   }
 
   private async getSummary(id: string): Promise<{ status: TaskStatus; teamId: string }> {
@@ -131,18 +154,54 @@ export class TaskService {
     return task;
   }
 
-  /** Updates the status, logs it in the task's history and, when it's completed, in the team feed. */
+  /**
+   * Updates the status, logs it in the task's history and (when completed) in the team feed,
+   * and notifies the assignee — plus, when it moves to review or done, whoever it was blocking.
+   */
   private async applyStatus(id: string, teamId: string, status: TaskStatus, actorId: string): Promise<TaskDto> {
-    const [task] = await this.prisma.$transaction([
-      this.prisma.task.update({ where: { id }, data: { status }, include }),
-      this.prisma.taskEvent.create({ data: { taskId: id, kind: "status", actorId, status, at: now() } }),
-      ...(status === "done" ? [recordActivity(this.prisma, { teamId, actorId, summary: `completó ${id}` })] : []),
-    ]);
-    return toDto(task);
+    return this.prisma.$transaction(async (tx) => {
+      const task = await tx.task.update({ where: { id }, data: { status }, include });
+      await tx.taskEvent.create({ data: { taskId: id, kind: "status", actorId, status, at: now() } });
+      if (status === "done") await recordActivity(tx, { teamId, actorId, summary: `completó ${id}` });
+
+      const actor = await nameOf(tx, actorId);
+      await notify(tx, {
+        recipients: [task.assigneeId],
+        actorId,
+        kind: "status",
+        title: `${actor} movió ${id} a ${STATUS_LABEL[status]}`,
+        taskId: id,
+      });
+      if (status === "in_review" || status === "done") {
+        const blocked = await tx.task.findMany({
+          where: { blockedBy: { some: { blockerId: id } }, assigneeId: { not: null } },
+          select: { id: true, assigneeId: true },
+        });
+        for (const waiting of blocked) {
+          await notify(tx, {
+            recipients: [waiting.assigneeId],
+            actorId,
+            kind: "status",
+            title: `${id}, que bloquea ${waiting.id}, pasó a ${STATUS_LABEL[status]}`,
+            taskId: waiting.id,
+          });
+        }
+      }
+      return toDto(task);
+    });
   }
 }
 
-export type NewTaskInput = Pick<CreateTaskDto, "teamId" | "title" | "status" | "assigneeId" | "cycleId" | "sourceDocumentId">;
+export type NewTaskInput = Pick<CreateTaskDto, "teamId" | "title" | "status" | "assigneeId" | "cycleId" | "sourceDocumentId"> & {
+  description?: string | null;
+  dueDate?: string | null;
+};
+
+/** "Ana te asignó PL-42" to the new assignee (never to someone assigning themselves). */
+async function notifyAssignment(tx: Prisma.TransactionClient, taskId: string, assigneeId: string, actorId: string): Promise<void> {
+  const actor = await nameOf(tx, actorId);
+  await notify(tx, { recipients: [assigneeId], actorId, kind: "assignment", title: `${actor} te asignó ${taskId}`, taskId });
+}
 
 /** Task creation inside the caller's transaction (triage acceptance reuses it). */
 export async function createTask(tx: Prisma.TransactionClient, input: NewTaskInput, actorId: string): Promise<TaskDto> {
@@ -161,14 +220,17 @@ export async function createTask(tx: Prisma.TransactionClient, input: NewTaskInp
       id: `${team.abbreviation}-${team.taskSeq}`,
       teamId: team.id,
       title: input.title,
+      description: input.description?.trim() || null,
       status: input.status,
       assigneeId: input.assigneeId ?? null,
+      dueDate: input.dueDate ?? null,
       cycleId: input.cycleId,
       sourceDocumentId: input.sourceDocumentId,
     },
     include,
   });
   await recordActivity(tx, { teamId: team.id, actorId, summary: `creó ${task.id}` });
+  if (task.assigneeId) await notifyAssignment(tx, task.id, task.assigneeId, actorId);
   return toDto(task);
 }
 

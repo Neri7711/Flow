@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsArray, IsNotEmpty, IsOptional, IsString, ValidateNested } from "class-validator";
+import { IsArray, IsBoolean, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateNested } from "class-validator";
 
 /** Each property: omit to leave it unchanged, send `null` (or `[]` for tags) to clear it. */
 export class DocumentPropertiesInput {
@@ -17,7 +17,24 @@ export class DocumentPropertiesInput {
   tags?: string[];
 }
 
-export class CreateDocumentDto {
+/** Page look: emoji, cover color and draft label. `null` clears icon/cover. */
+class PageLookFields {
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  icon?: string | null;
+
+  /** Team palette key ("cs", "pl", "me", "ii"). */
+  @IsOptional()
+  @IsString()
+  coverTone?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  isDraft?: boolean;
+}
+
+export class CreateDocumentDto extends PageLookFields {
   @IsString()
   @IsNotEmpty()
   teamId!: string;
@@ -40,7 +57,7 @@ export class CreateDocumentDto {
   properties?: DocumentPropertiesInput;
 }
 
-export class UpdateDocumentDto {
+export class UpdateDocumentDto extends PageLookFields {
   @IsOptional()
   @IsString()
   @IsNotEmpty()

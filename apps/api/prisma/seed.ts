@@ -160,6 +160,14 @@ function taskSeqFor(abbreviation: string): number {
   return TASKS.reduce((max, { id }) => (id.startsWith(prefix) ? Math.max(max, Number(id.slice(prefix.length))) : max), 0);
 }
 
+/** Work area and last activity of the seeded people (presence and "última actividad" in Miembros). */
+const PROFILES = {
+  "u-moge": { area: "Programación", lastActiveAt: ago("2026-09-30T09:29:00-06:00") },
+  "u-ana": { area: "Arte", lastActiveAt: ago("2026-09-30T09:20:00-06:00") },
+  "u-fer": { area: "Diseño", lastActiveAt: ago("2026-09-30T08:30:00-06:00") },
+  "u-nico": { area: "Audio", lastActiveAt: ago("2026-09-29T18:00:00-06:00") },
+};
+
 async function main() {
   if (!SEED_PASSWORD) throw new Error("Set SEED_PASSWORD in apps/api/.env (see .env.example) before seeding.");
 
@@ -168,17 +176,28 @@ async function main() {
     TRUNCATE TABLE
       "TaskEvent", "TaskDependency", "DocumentTaskMention", "DocumentComment", "Task", "Document",
       "ProjectArea", "Milestone", "Project", "Cycle", "CalendarEvent", "Activity", "TriageRequest",
-      "Invitation", "TaskLabel", "User", "Team"
+      "Invitation", "Notification", "EventAttendee", "Membership", "CycleSettings",
+      "TaskLabel", "User", "Team"
     RESTART IDENTITY CASCADE`);
 
   await prisma.team.createMany({ data: TEAMS.map((team) => ({ ...team, taskSeq: taskSeqFor(team.abbreviation) })) });
   const passwordHash = await hashPassword(SEED_PASSWORD);
-  await prisma.user.createMany({ data: USERS.map((user) => ({ ...user, passwordHash })) });
+  await prisma.user.createMany({
+    data: USERS.map((user) => ({ ...user, passwordHash, ...PROFILES[user.id as keyof typeof PROFILES] })),
+  });
+  // Everyone in their home space. Ana also leads Computer Science (she wrote its wiki and owns its
+  // tasks), so a space other than Play has someone who can run it.
+  await prisma.membership.createMany({
+    data: [...USERS.map((user) => ({ userId: user.id, teamId: user.teamId, role: user.role })), { userId: "u-ana", teamId: "cs", role: "leader" }],
+  });
   await prisma.taskLabel.createMany({ data: LABELS });
 
   await prisma.cycle.create({
     data: { id: "pl-c4", teamId: "pl", number: 4, startsAt: on("2026-09-29T00:00:00-06:00"), endsAt: on("2026-10-12T23:59:00-06:00") },
   });
+  // Play runs 2-week cycles starting on the weekday cycle 4 started (Mexico City).
+  const cycleStartDay = new Date(on("2026-09-29T00:00:00-06:00").getTime() - 6 * 60 * 60 * 1000).getUTCDay();
+  await prisma.cycleSettings.create({ data: { teamId: "pl", enabled: true, lengthWeeks: 2, startDay: cycleStartDay, rollover: "next_cycle" } });
 
   await prisma.project.create({
     data: {
@@ -229,6 +248,15 @@ async function main() {
       { id: "ev-playtest", teamId: "pl", title: "Playtest interno", startsAt: on("2026-10-07T16:00:00-06:00"), endsAt: on("2026-10-07T17:00:00-06:00"), tone: "cs" },
       { id: "ev-builds", teamId: "pl", title: "Entrega de builds", startsAt: on("2026-10-10T00:00:00-06:00"), endsAt: null, tone: "ii" },
       { id: "ev-cs-review", teamId: "cs", title: "Revisión de arquitectura", startsAt: on("2026-10-03T12:00:00-06:00"), endsAt: on("2026-10-03T13:00:00-06:00"), tone: "cs" },
+    ],
+  });
+  await prisma.calendarEvent.update({ where: { id: "ev-builds" }, data: { allDay: true } });
+  await prisma.eventAttendee.createMany({
+    data: [
+      ...["u-moge", "u-ana", "u-fer", "u-nico"].map((userId) => ({ eventId: "ev-kickoff", userId })),
+      ...["u-moge", "u-ana", "u-nico"].map((userId) => ({ eventId: "ev-playtest", userId })),
+      ...["u-moge", "u-fer"].map((userId) => ({ eventId: "ev-builds", userId })),
+      { eventId: "ev-cs-review", userId: "u-ana" },
     ],
   });
 

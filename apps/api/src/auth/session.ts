@@ -4,8 +4,11 @@ import type { UserRole } from "@prisma/client";
 /** The signed-in user, attached to every authenticated request by `AuthGuard`. */
 export type SessionUser = {
   id: string;
+  /** Home space and the role there. */
   teamId: string;
   role: UserRole;
+  /** Every space the user belongs to, with the role in each. */
+  memberships: { teamId: string; role: UserRole }[];
 };
 
 export type AuthenticatedRequest = { user?: SessionUser; headers: Record<string, string | string[] | undefined> };
